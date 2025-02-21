@@ -572,7 +572,7 @@ def set_paragraph_format(paragraph):
     paragraph_format.space_after = Pt(6)
     paragraph_format.space_before = Pt(6)
 
-@app.route('/generate-doc', methods=['POST'])
+@app.route('/generate_doc', methods=['POST'])
 def generate_document():
     try:
         # Initialize COM for this thread
