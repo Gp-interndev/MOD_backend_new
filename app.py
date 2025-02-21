@@ -25,7 +25,9 @@ import requests
 import os
 # import comtypes.client
 import logging
-import pythoncom
+# import pythoncom  
+# import pypandoc
+from docx2pdf import convert
 
 
 app = Flask(__name__)
@@ -572,14 +574,17 @@ def set_paragraph_format(paragraph):
 
 @app.route('/generate-doc', methods=['POST'])
 def generate_document():
-    pythoncom.CoInitialize()  # Initialize COM
     try:
-        # Validate request data
-        if not request.is_json:
-            return jsonify({
-                "success": False,
-                "error": "Request must be JSON"
-            }), 400
+        # Initialize COM for this thread
+        # pythoncom.CoInitialize()
+        
+        try:
+            # Validate request data
+            if not request.is_json:
+                return jsonify({
+                    "success": False,
+                    "error": "Request must be JSON"
+                }), 400
 
             # Get outward number and file data from request
             data = request.json
@@ -756,7 +761,9 @@ def generate_document():
                 }), 500
 
         finally:
-            pythoncom.CoUninitialize()
+            # Always uninitialize COM, even if an error occurred
+            # pythoncom.CoUninitialize()
+            pass
 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
