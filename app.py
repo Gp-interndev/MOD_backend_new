@@ -25,8 +25,9 @@ import requests
 import os
 # import comtypes.client
 import logging
-# import pythoncom  
+import pythoncom  
 # import pypandoc
+from docx2pdf import convert
 
 
 app = Flask(__name__)
@@ -524,6 +525,8 @@ def process_csv():
             result = {
                 "decimal_degrees": decimal_degrees,
                 "boundary_distances": boundary_distances,
+                "Height of plot from sea surface":"573.7 + 15.35 = 589.05 M",
+                "Height of building from sea surface":"573.4 + 15.35 = 588.05 M"
             }
 
             return jsonify(result), 200
@@ -538,241 +541,235 @@ def process_csv():
 
 
 
-#API For Saving Data to file and display file
+
 
 
 # Set up logging
-# logging.basicConfig(level=logging.DEBUG)
-# logger = logging.getLogger(__name__)
 
-# def set_table_borders(table):
-#     tbl = table._element
-#     tbl_pr = tbl.find(qn("w:tblPr"))
-#     if tbl_pr is None:
-#         tbl_pr = OxmlElement("w:tblPr")
-#         tbl.insert(0, tbl_pr)
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-#     tbl_borders = OxmlElement("w:tblBorders")
-#     for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
-#         border = OxmlElement(f"w:{border_name}")
-#         border.set(qn("w:val"), "single")
-#         border.set(qn("w:sz"), "5")
-#         border.set(qn("w:space"), "0")
-#         border.set(qn("w:color"), "000000")
-#         tbl_borders.append(border)
-#     tbl_pr.append(tbl_borders)
+def set_table_borders(table):
+    tbl = table._element
+    tbl_pr = tbl.find(qn("w:tblPr"))
+    if tbl_pr is None:
+        tbl_pr = OxmlElement("w:tblPr")
+        tbl.insert(0, tbl_pr)
 
-# def set_paragraph_format(paragraph):
-#     paragraph_format = paragraph.paragraph_format
-#     paragraph_format.line_spacing = 1.5
-#     paragraph_format.space_after = Pt(6)
-#     paragraph_format.space_before = Pt(6)
+    tbl_borders = OxmlElement("w:tblBorders")
+    for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
+        border = OxmlElement(f"w:{border_name}")
+        border.set(qn("w:val"), "single")
+        border.set(qn("w:sz"), "5")
+        border.set(qn("w:space"), "0")
+        border.set(qn("w:color"), "000000")
+        tbl_borders.append(border)
+    tbl_pr.append(tbl_borders)
 
-# logger = logging.getLogger(__name__)
+def set_paragraph_format(paragraph):
+    paragraph_format = paragraph.paragraph_format
+    paragraph_format.line_spacing = 1.5
+    paragraph_format.space_after = Pt(6)
+    paragraph_format.space_before = Pt(6)
 
-# @app.route('/generate-doc', methods=['POST'])
-# def generate_document():
-#     try:
-#         # Validate request data
-#         if not request.is_json:
-#             return jsonify({
-#                 "success": False,
-#                 "error": "Request must be JSON"
-#             }), 400
+@app.route('/generate-doc', methods=['POST'])
+def generate_document():
+    try:
+        # Initialize COM for this thread
+        pythoncom.CoInitialize()
+        
+        try:
+            # Validate request data
+            if not request.is_json:
+                return jsonify({
+                    "success": False,
+                    "error": "Request must be JSON"
+                }), 400
 
-#         # Get outward number and file data from request
-#         data = request.json
-#         if not data:
-#             return jsonify({
-#                 "success": False,
-#                 "error": "No JSON data received"
-#             }), 400
+            # Get outward number and file data from request
+            data = request.json
+            if not data:
+                return jsonify({
+                    "success": False,
+                    "error": "No JSON data received"
+                }), 400
 
-#         outward_number = data.get('outwardNumber')
-#         coordinates_data = data.get('fileData')
+            outward_number = data.get('outwardNumber')
+            coordinates_data = data.get('fileData')
 
-#         if not outward_number or not coordinates_data:
-#             return jsonify({
-#                 "success": False,
-#                 "error": "Missing required fields: outwardNumber or fileData"
-#             }), 400
+            if not outward_number or not coordinates_data:
+                return jsonify({
+                    "success": False,
+                    "error": "Missing required fields: outwardNumber or fileData"
+                }), 400
 
-#         logger.info(f"Processing outward number: {outward_number}")
-#         logger.info(f"Coordinates data: {coordinates_data}")
+            logger.info(f"Processing outward number: {outward_number}")
+            logger.info(f"Coordinates data: {coordinates_data}")
 
-#         # Fetch user data from API
-#         try:
-#             user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
-#             user_response.raise_for_status()
-#             user_data = user_response.json()
-#         except requests.exceptions.RequestException as e:
-#             logger.error(f"Error fetching user data: {str(e)}")
-#             return jsonify({
-#                 "success": False,
-#                 "error": f"Failed to fetch user data: {str(e)}"
-#             }), 500
+            # Fetch user data from API
+            try:
+                user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
+                user_response.raise_for_status()
+                user_data = user_response.json()
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching user data: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to fetch user data: {str(e)}"
+                }), 500
 
-#         # Verify template file exists
-#         template_path = "MOD 2.docx"
-#         if not os.path.exists(template_path):
-#             return jsonify({
-#                 "success": False,
-#                 "error": "Template file not found"
-#             }), 500
+            # Verify template file exists
+            template_path = "MOD 2.docx"
+            if not os.path.exists(template_path):
+                return jsonify({
+                    "success": False,
+                    "error": "Template file not found"
+                }), 500
 
-#         # Create document
-#         try:
-#             docmonarch = Document(template_path)
-#         except Exception as e:
-#             logger.error(f"Error creating document: {str(e)}")
-#             return jsonify({
-#                 "success": False,
-#                 "error": f"Failed to create document: {str(e)}"
-#             }), 500
+            # Create document
+            try:
+                docmonarch = Document(template_path)
+            except Exception as e:
+                logger.error(f"Error creating document: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to create document: {str(e)}"
+                }), 500
 
-#         # Update user information
-#         try:
-#             name_on_certificate = user_data["user"]["nameoncertificate"]
-#             corresponding_Address = user_data["user"]["correspondanceadress"]
-#             Survey_no = "Survey No." + user_data["user"]["gutnumber"]
-#             site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
+            # Update user information
+            try:
+                name_on_certificate = user_data["user"]["nameoncertificate"]
+                corresponding_Address = user_data["user"]["correspondanceadress"]
+                Survey_no = "Survey No." + user_data["user"]["gutnumber"]
+                site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
 
-#             # Update paragraphs
-#             if len(docmonarch.paragraphs) > 6:
-#                 paragraph = docmonarch.paragraphs[6]
-#                 paragraph.clear()
-#                 run = paragraph.add_run(name_on_certificate)
-#                 run.font.name = 'Arial'
-#                 run.font.size = Pt(12)
-#                 run.font.bold = True
-#                 set_paragraph_format(paragraph)
+                # Update paragraphs
+                if len(docmonarch.paragraphs) > 6:
+                    paragraph = docmonarch.paragraphs[6]
+                    paragraph.clear()
+                    run = paragraph.add_run(name_on_certificate)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
+                    set_paragraph_format(paragraph)
 
-#             if len(docmonarch.paragraphs) > 8:
-#                 paragraph = docmonarch.paragraphs[8]
-#                 paragraph.clear()
-#                 run = paragraph.add_run(corresponding_Address)
-#                 run.font.name = 'Arial'
-#                 run.font.size = Pt(12)
-#                 run.font.bold = True
-#                 set_paragraph_format(paragraph)
+                if len(docmonarch.paragraphs) > 8:
+                    paragraph = docmonarch.paragraphs[8]
+                    paragraph.clear()
+                    run = paragraph.add_run(corresponding_Address)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
+                    set_paragraph_format(paragraph)
 
-#             if len(docmonarch.paragraphs) > 15:
-#                 paragraph = docmonarch.paragraphs[7]
-#                 paragraph.clear()
-#                 run = paragraph.add_run(Survey_no)
-#                 run.font.name = 'Arial'
-#                 run.font.size = Pt(12)
-#                 run.font.bold = True
+                if len(docmonarch.paragraphs) > 15:
+                    paragraph = docmonarch.paragraphs[7]
+                    paragraph.clear()
+                    run = paragraph.add_run(Survey_no)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
 
-#             if len(docmonarch.paragraphs) > 17:
-#                 paragraph = docmonarch.paragraphs[7]
-#                 paragraph.clear()
-#                 run = paragraph.add_run(site_adress)
-#                 run.font.name = 'Arial'
-#                 run.font.size = Pt(12)
-#                 run.font.bold = True
+                if len(docmonarch.paragraphs) > 17:
+                    paragraph = docmonarch.paragraphs[7]
+                    paragraph.clear()
+                    run = paragraph.add_run(site_adress)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
 
-#             # Update table with coordinates data
-#             if docmonarch.tables:
-#                 if len(docmonarch.tables) > 1:
-#                     for table in docmonarch.tables[1:]:
-#                         table._element.getparent().remove(table._element)
+                # Update table with coordinates data
+                if docmonarch.tables:
+                    if len(docmonarch.tables) > 1:
+                        for table in docmonarch.tables[1:]:
+                            table._element.getparent().remove(table._element)
+                    
+                    table = docmonarch.tables[0]
+                    row_index = 3
+
+                    # Remove existing data rows
+                    for _ in range(len(table.rows) - row_index):
+                        table._element.remove(table.rows[row_index]._element)
+
+                    serial_number = 1
+                    for entry in coordinates_data:
+                        new_row = table.add_row()
+                        new_row.cells[0].text = str(serial_number)
+        
+                        # Check that all other cells are populated correctly
+                        for i, cell in enumerate(new_row.cells):
+                            if i == 1:
+                               cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
+                            elif i == 2:
+                               cell.text = entry['latitude_dms']
+                            elif i == 3:
+                               cell.text = entry['longitude_dms']
+                            elif i == 4:
+                                cell.text = str(entry['Height'])
+                            elif i == 5 and 'distances_to_reference_points_km' in entry:
+                                cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
+                            elif i == 6 and 'distances_to_reference_points_km' in entry:
+                                cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
+                            elif i == 7 and 'boundary_distances' in entry:
+                                cell.text = (
+                                   f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
+                                   f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
+                                )
+
+                            # Set the font and formatting for each cell
+                            for para in cell.paragraphs:
+                                for run in para.runs:
+                                    run.font.name = "Arial"
+                                    run.font.size = Pt(12)
+
+                        serial_number += 1
+
+                    set_table_borders(table)
+
+                # Save document
+                output_docx = 'modified_output.docx'
+                output_pdf = 'modified_output.pdf'
+                docmonarch.save(output_docx)
                 
-#                 table = docmonarch.tables[0]
-#                 row_index = 3
+                # Convert to PDF using docx2pdf
+                try:
+                    # Convert DOCX to PDF
+                    convert(output_docx, output_pdf)
 
-#                 # Remove existing data rows
-#                 for _ in range(len(table.rows) - row_index):
-#                     table._element.remove(table.rows[row_index]._element)
+                    if not os.path.exists(output_pdf):
+                        raise Exception("PDF file was not created")
 
-#                 serial_number = 1
-#                 for entry in coordinates_data:
-#                     new_row = table.add_row()
-#                     new_row.cells[0].text = str(serial_number)
-    
-#                     # Check that all other cells are populated correctly
-#                     for i, cell in enumerate(new_row.cells):
-#                         if i == 1:
-#                            cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
-#                         elif i == 2:
-#                            cell.text = entry['latitude_dms']
-#                         elif i == 3:
-#                            cell.text = entry['longitude_dms']
-#                         elif i == 4:
-#                             cell.text = str(entry['Height'])
-#                         elif i == 5 and 'distances_to_reference_points_km' in entry:
-#                             cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
-#                         elif i == 6 and 'distances_to_reference_points_km' in entry:
-#                             cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
-#                         elif i == 7 and 'boundary_distances' in entry:
-#                             cell.text = (
-#                                f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
-#                                f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
-#                             )
+                    return jsonify({
+                        "success": True,
+                        "message": "Document generated successfully",
+                        "docPath": os.path.abspath(output_docx),
+                        "pdfPath": os.path.abspath(output_pdf)
+                    })
 
-#                         # Set the font and formatting for each cell
-#                         for para in cell.paragraphs:
-#                             for run in para.runs:
-#                                 run.font.name = "Arial"
-#                                 run.font.size = Pt(12)
+                except Exception as e:
+                    logger.error(f"Error converting to PDF: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"Error converting to PDF: {str(e)}"
+                    }), 500
 
-#                     serial_number += 1
+            except Exception as e:
+                logger.error(f"Error during document generation: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Error during document generation: {str(e)}"
+                }), 500
 
-#                 set_table_borders(table)
+        finally:
+            # Always uninitialize COM, even if an error occurred
+            pythoncom.CoUninitialize()
 
-#             # Save document
-#             output_docx = 'modified_output.docx'
-#             output_pdf = 'modified_output.pdf'
-#             docmonarch.save(output_docx)
-            
-#             # Convert to PDF using pypandoc
-#             try:
-#                 # Configure PDF conversion options
-#                 output_dir = os.path.dirname(os.path.abspath(output_pdf))
-                
-#                 # Convert DOCX to PDF
-#                 pypandoc.convert_file(
-#                     output_docx,
-#                     'pdf',
-#                     outputfile=output_pdf,
-#                     extra_args=[
-#                         '--pdf-engine=xelatex',
-#                         '--variable', 'geometry:margin=1in',
-#                         '--variable', 'papersize=a4',
-#                     ]
-#                 )
-
-#                 if not os.path.exists(output_pdf):
-#                     raise Exception("PDF file was not created")
-
-#                 return jsonify({
-#                     "success": True,
-#                     "message": "Document generated successfully",
-#                     "docPath": os.path.abspath(output_docx),
-#                     "pdfPath": os.path.abspath(output_pdf)
-#                 })
-
-#             except Exception as e:
-#                 logger.error(f"Error converting to PDF: {str(e)}")
-#                 return jsonify({
-#                     "success": False,
-#                     "error": f"Error converting to PDF: {str(e)}"
-#                 }), 500
-
-#         except Exception as e:
-#             logger.error(f"Error during document generation: {str(e)}")
-#             return jsonify({
-#                 "success": False,
-#                 "error": f"Error during document generation: {str(e)}"
-#             }), 500
-
-#     except Exception as e:
-#         logger.error(f"Unexpected error: {str(e)}")
-#         return jsonify({
-#             "success": False,
-#             "error": f"Unexpected error: {str(e)}"
-#         }), 500
-
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Unexpected error: {str(e)}"
+        }), 500
 
 @app.route('/get-doc')
 def get_document():
