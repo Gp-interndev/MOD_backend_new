@@ -1,123 +1,3 @@
-# from flask import Flask, request, jsonify
-# import psycopg2
-# from datetime import datetime
-# from flask_cors import CORS
-
-
-# app = Flask(__name__)
-
-# CORS(app) 
-
-# # Database Configuration
-# DB_HOST = "iwmsgis.pmc.gov.in"
-# DB_NAME = "MOD"
-# DB_USER = "postgres"
-# DB_PASS = "pmc992101"
-
-# def get_db_connection():
-#     """Establish connection to PostgreSQL"""
-#     return psycopg2.connect(
-#         host=DB_HOST,
-#         database=DB_NAME,
-#         user=DB_USER,
-#         password=DB_PASS
-#     )
-
-# @app.route('/save_user', methods=['POST'])
-# def save_user():
-#     """API endpoint to insert user data into PostgreSQL"""
-#     try:
-#         data = request.json  # Get JSON input from request
-        
-#         # Extract data from JSON payload
-#         name = data.get("name")
-#         mobilenumber = data.get("mobilenumber")
-#         nameoncertificate = data.get("nameoncertificate")
-#         gstnumber = data.get("gstnumber") if data.get("gstnumber") else None
-#         pannumber = data.get("pannumber") if data.get("pannumber") else None
-#         siteadress = data.get("siteadress")
-#         gutnumber = data.get("gutnumber") 
-#         district = data.get("district")
-#         taluka = data.get("taluka")
-#         village = data.get("village")
-#         pincode = data.get("pincode") if data.get("pincode") else None
-#         correspondanceadress = data.get("correspondanceadress")
-#         # outwardnumber = data.get("outwardnumber")
-#         date = datetime.now()  # Store current timestamp
-
-#         if not all([name, nameoncertificate, gutnumber, district, taluka, village]):
-#             return jsonify({"error": "Missing required fields"}), 400
-
-#         conn = get_db_connection()
-#         cursor = conn.cursor()
-
-#         # SQL Query to Insert Data
-#         insert_query = """
-#         INSERT INTO public.userdata 
-#         (name, mobilenumber, nameoncertificate, gstnumber, pannumber, siteadress, gutnumber, 
-#          district, taluka, village, pincode, correspondanceadress,  date) 
-#         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-#         RETURNING outwardnumber
-#         """
-#         cursor.execute(insert_query, (name, mobilenumber, nameoncertificate, gstnumber, pannumber, 
-#                                       siteadress, gutnumber, district, taluka, village, pincode, 
-#                                       correspondanceadress,  date))
-
-#         outwardnumber = cursor.fetchone()[0]
-#         conn.commit()
-
-#         cursor.close()
-#         conn.close()
-
-#         return jsonify({"message": "User data saved successfully!",
-#                         "outwardnumber": outwardnumber})
-
-#     except psycopg2.Error as e:
-#         return jsonify({"error": str(e)}), 500
-    
-
-# @app.route('/get_user/<string:outwardnumber>', methods=['GET'])
-# def get_user_by_outwardnumber(outwardnumber):
-#     """API endpoint to retrieve a single user by outwardnumber"""
-#     try:
-#         conn = get_db_connection()
-#         cursor = conn.cursor()
-
-#         # Query with explicit column selection to avoid incorrect mapping
-#         query = """SELECT outwardnumber, name, mobilenumber, nameoncertificate, gstnumber, 
-#                    pannumber, siteadress, gutnumber, district, taluka, village, 
-#                    pincode, correspondanceadress, date FROM userdata WHERE outwardnumber = %s"""
-#         cursor.execute(query, (outwardnumber,))
-#         user = cursor.fetchone()
-
-#         cursor.close()
-#         conn.close()
-
-#         if user:
-#             # Define column names explicitly in the correct order
-#             columns = ["outwardnumber", "name", "mobilenumber", "nameoncertificate", "gstnumber", 
-#                        "pannumber", "siteadress", "gutnumber", "district", "taluka", "village", 
-#                        "pincode", "correspondanceadress", "date"]
- 
-#             user_data = dict(zip(columns, user))  # Convert tuple to dictionary
-
-#             return jsonify({"user": user_data}), 200
-#         else:
-#             return jsonify({"message": "User not found"}), 404
-
-#     except psycopg2.Error as e:
-#         return jsonify({"error": str(e)}), 500
-
-# if __name__ == '__main__':
-#         app.run(debug=True, host='0.0.0.0', port=5000)
-
-
-
-
-
-
-
-
 from flask import Flask, request, jsonify, render_template, send_file
 import psycopg2
 from datetime import datetime
@@ -143,9 +23,11 @@ import requests
 # from flask import Flask, request, jsonify, send_file
 # from flask_cors import CORS
 import os
-import comtypes.client
+# import comtypes.client
 import logging
-import pythoncom
+# import pythoncom  
+# import pypandoc
+from docx2pdf import convert
 
 
 app = Flask(__name__)
@@ -291,11 +173,9 @@ def get_user_by_outwardnumber(outwardnumber):
     except psycopg2.Error as e:
         return jsonify({"error": str(e)}), 500
 
-        # API for the Coordinates Data
 
 
-# Define UTM projection for Zone 43N
-
+# API for the Coordinates Data
 # Define UTM projection for Zone 43N
 utm_proj = Proj(proj="utm", zone=43, datum="WGS84", south=False)
 wgs84_proj = Proj(proj="latlong", datum="WGS84")
@@ -645,6 +525,8 @@ def process_csv():
             result = {
                 "decimal_degrees": decimal_degrees,
                 "boundary_distances": boundary_distances,
+                "Height of plot from sea surface":"573.7 + 15.35 = 589.05 M",
+                "Height of building from sea surface":"573.4 + 15.35 = 588.05 M"
             }
 
             return jsonify(result), 200
@@ -659,10 +541,11 @@ def process_csv():
 
 
 
-#API For Saving Data to file and display file
+
 
 
 # Set up logging
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -691,185 +574,196 @@ def set_paragraph_format(paragraph):
 
 @app.route('/generate-doc', methods=['POST'])
 def generate_document():
-    pythoncom.CoInitialize()  # Initialize COM
     try:
-        # Validate request data
-        if not request.is_json:
-            return jsonify({
-                "success": False,
-                "error": "Request must be JSON"
-            }), 400
-
-        # Get outward number and file data from request
-        data = request.json
-        if not data:
-            return jsonify({
-                "success": False,
-                "error": "No JSON data received"
-            }), 400
-
-        outward_number = data.get('outwardNumber')
-        coordinates_data = data.get('fileData')
-
-        if not outward_number or not coordinates_data:
-            return jsonify({
-                "success": False,
-                "error": "Missing required fields: outwardNumber or fileData"
-            }), 400
-
-        logger.info(f"Processing outward number: {outward_number}")
-        logger.info(f"Coordinates data: {coordinates_data}")
-
-        # Fetch user data from API
+        # Initialize COM for this thread
+        # pythoncom.CoInitialize()
+        
         try:
-            user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
-            user_response.raise_for_status()
-            user_data = user_response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching user data: {str(e)}")
-            return jsonify({
-                "success": False,
-                "error": f"Failed to fetch user data: {str(e)}"
-            }), 500
+            # Validate request data
+            if not request.is_json:
+                return jsonify({
+                    "success": False,
+                    "error": "Request must be JSON"
+                }), 400
 
-        # Verify template file exists
-        template_path = "MOD 2.docx"
-        if not os.path.exists(template_path):
-            return jsonify({
-                "success": False,
-                "error": "Template file not found"
-            }), 500
+            # Get outward number and file data from request
+            data = request.json
+            if not data:
+                return jsonify({
+                    "success": False,
+                    "error": "No JSON data received"
+                }), 400
 
-        # Create document
-        try:
-            docmonarch = Document(template_path)
-        except Exception as e:
-            logger.error(f"Error creating document: {str(e)}")
-            return jsonify({
-                "success": False,
-                "error": f"Failed to create document: {str(e)}"
-            }), 500
+            outward_number = data.get('outwardNumber')
+            coordinates_data = data.get('fileData')
 
-        # Update user information
-        try:
-            name_on_certificate = user_data["user"]["nameoncertificate"]
-            corresponding_Address = user_data["user"]["correspondanceadress"]
-            Survey_no = "Survey No." + user_data["user"]["gutnumber"]
-            site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
+            if not outward_number or not coordinates_data:
+                return jsonify({
+                    "success": False,
+                    "error": "Missing required fields: outwardNumber or fileData"
+                }), 400
 
-            # Update paragraphs
-            if len(docmonarch.paragraphs) > 6:
-                paragraph = docmonarch.paragraphs[6]
-                paragraph.clear()
-                run = paragraph.add_run(name_on_certificate)
-                run.font.name = 'Arial'
-                run.font.size = Pt(12)
-                run.font.bold = True
-                set_paragraph_format(paragraph)
+            logger.info(f"Processing outward number: {outward_number}")
+            logger.info(f"Coordinates data: {coordinates_data}")
 
-            if len(docmonarch.paragraphs) > 8:
-                paragraph = docmonarch.paragraphs[8]
-                paragraph.clear()
-                run = paragraph.add_run(corresponding_Address)
-                run.font.name = 'Arial'
-                run.font.size = Pt(12)
-                run.font.bold = True
-                set_paragraph_format(paragraph)
+            # Fetch user data from API
+            try:
+                user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
+                user_response.raise_for_status()
+                user_data = user_response.json()
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching user data: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to fetch user data: {str(e)}"
+                }), 500
 
-            if len(docmonarch.paragraphs) > 15:
-                paragraph = docmonarch.paragraphs[7]
-                paragraph.clear()
-                run = paragraph.add_run(Survey_no)
-                run.font.name = 'Arial'
-                run.font.size = Pt(12)
-                run.font.bold = True
+            # Verify template file exists
+            template_path = "MOD 2.docx"
+            if not os.path.exists(template_path):
+                return jsonify({
+                    "success": False,
+                    "error": "Template file not found"
+                }), 500
 
-            if len(docmonarch.paragraphs) > 17:
-                paragraph = docmonarch.paragraphs[7]
-                paragraph.clear()
-                run = paragraph.add_run(site_adress)
-                run.font.name = 'Arial'
-                run.font.size = Pt(12)
-                run.font.bold = True
+            # Create document
+            try:
+                docmonarch = Document(template_path)
+            except Exception as e:
+                logger.error(f"Error creating document: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to create document: {str(e)}"
+                }), 500
 
-            # Update table with coordinates data
-            if docmonarch.tables:
-                if len(docmonarch.tables) > 1:
-                    for table in docmonarch.tables[1:]:
-                        table._element.getparent().remove(table._element)
+            # Update user information
+            try:
+                name_on_certificate = user_data["user"]["nameoncertificate"]
+                corresponding_Address = user_data["user"]["correspondanceadress"]
+                Survey_no = "Survey No." + user_data["user"]["gutnumber"]
+                site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
+
+                # Update paragraphs
+                if len(docmonarch.paragraphs) > 6:
+                    paragraph = docmonarch.paragraphs[6]
+                    paragraph.clear()
+                    run = paragraph.add_run(name_on_certificate)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
+                    set_paragraph_format(paragraph)
+
+                if len(docmonarch.paragraphs) > 8:
+                    paragraph = docmonarch.paragraphs[8]
+                    paragraph.clear()
+                    run = paragraph.add_run(corresponding_Address)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
+                    set_paragraph_format(paragraph)
+
+                if len(docmonarch.paragraphs) > 15:
+                    paragraph = docmonarch.paragraphs[7]
+                    paragraph.clear()
+                    run = paragraph.add_run(Survey_no)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
+
+                if len(docmonarch.paragraphs) > 17:
+                    paragraph = docmonarch.paragraphs[7]
+                    paragraph.clear()
+                    run = paragraph.add_run(site_adress)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.font.bold = True
+
+                # Update table with coordinates data
+                if docmonarch.tables:
+                    if len(docmonarch.tables) > 1:
+                        for table in docmonarch.tables[1:]:
+                            table._element.getparent().remove(table._element)
+                    
+                    table = docmonarch.tables[0]
+                    row_index = 3
+
+                    # Remove existing data rows
+                    for _ in range(len(table.rows) - row_index):
+                        table._element.remove(table.rows[row_index]._element)
+
+                    serial_number = 1
+                    for entry in coordinates_data:
+                        new_row = table.add_row()
+                        new_row.cells[0].text = str(serial_number)
+        
+                        # Check that all other cells are populated correctly
+                        for i, cell in enumerate(new_row.cells):
+                            if i == 1:
+                               cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
+                            elif i == 2:
+                               cell.text = entry['latitude_dms']
+                            elif i == 3:
+                               cell.text = entry['longitude_dms']
+                            elif i == 4:
+                                cell.text = str(entry['Height'])
+                            elif i == 5 and 'distances_to_reference_points_km' in entry:
+                                cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
+                            elif i == 6 and 'distances_to_reference_points_km' in entry:
+                                cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
+                            elif i == 7 and 'boundary_distances' in entry:
+                                cell.text = (
+                                   f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
+                                   f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
+                                )
+
+                            # Set the font and formatting for each cell
+                            for para in cell.paragraphs:
+                                for run in para.runs:
+                                    run.font.name = "Arial"
+                                    run.font.size = Pt(12)
+
+                        serial_number += 1
+
+                    set_table_borders(table)
+
+                # Save document
+                output_docx = 'modified_output.docx'
+                output_pdf = 'modified_output.pdf'
+                docmonarch.save(output_docx)
                 
-                table = docmonarch.tables[0]
-                row_index = 3
+                # Convert to PDF using docx2pdf
+                try:
+                    # Convert DOCX to PDF
+                    convert(output_docx, output_pdf)
 
-                # Remove existing data rows
-                for _ in range(len(table.rows) - row_index):
-                    table._element.remove(table.rows[row_index]._element)
+                    if not os.path.exists(output_pdf):
+                        raise Exception("PDF file was not created")
 
-                
-                serial_number = 1
-                for entry in coordinates_data:
-                    new_row = table.add_row()
-                    new_row.cells[0].text = str(serial_number)
-    
-    # Check that all other cells are populated correctly
-                    for i, cell in enumerate(new_row.cells):
-                        if i == 1:
-                           cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
-                        elif i == 2:
-                           cell.text = entry['latitude_dms']
-                        elif i == 3:
-                           cell.text = entry['longitude_dms']
-                        elif i == 4:
-                            cell.text = str(entry['Height'])
-                        elif i == 5 and 'distances_to_reference_points_km' in entry:
-                            cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
-                        elif i == 6 and 'distances_to_reference_points_km' in entry:
-                            cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
-                        elif i == 7 and 'boundary_distances' in entry:
-                            cell.text = (
-                               f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
-                               f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
-                            )
+                    return jsonify({
+                        "success": True,
+                        "message": "Document generated successfully",
+                        "docPath": os.path.abspath(output_docx),
+                        "pdfPath": os.path.abspath(output_pdf)
+                    })
 
-        # Set the font and formatting for each cell
-                        for para in cell.paragraphs:
-                            for run in para.runs:
-                                run.font.name = "Arial"
-                                run.font.size = Pt(12)
+                except Exception as e:
+                    logger.error(f"Error converting to PDF: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"Error converting to PDF: {str(e)}"
+                    }), 500
 
-                    serial_number += 1
+            except Exception as e:
+                logger.error(f"Error during document generation: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Error during document generation: {str(e)}"
+                }), 500
 
-                
-                set_table_borders(table)
-
-            # Save document
-            output_docx = 'modified_output.docx'
-            output_pdf = 'modified_output.pdf'
-            docmonarch.save(output_docx)
-            
-            # Convert to PDF
-            word = comtypes.client.CreateObject("Word.Application")
-            word.Visible = False
-            
-            doc = word.Documents.Open(os.path.abspath(output_docx))
-            doc.SaveAs(os.path.abspath(output_pdf), FileFormat=17)
-            doc.Close()
-            word.Quit()
-
-            return jsonify({
-                "success": True,
-                "message": "Document generated successfully",
-                "docPath": os.path.abspath(output_docx)
-            })
-
-        except Exception as e:
-            logger.error(f"Error during document generation: {str(e)}")
-            return jsonify({
-                "success": False,
-                "error": f"Error during document generation: {str(e)}"
-            }), 500
         finally:
-            pythoncom.CoUninitialize()
+            # Always uninitialize COM, even if an error occurred
+            # pythoncom.CoUninitialize()
+            pass
 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
@@ -877,7 +771,6 @@ def generate_document():
             "success": False,
             "error": f"Unexpected error: {str(e)}"
         }), 500
-
 
 @app.route('/get-doc')
 def get_document():
@@ -926,3 +819,206 @@ def download_pdf(outward_number):
 
 if __name__ == '__main__':
         app.run(debug=True, host='0.0.0.0', port=5000)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# @app.route('/generate-doc', methods=['POST'])
+# def generate_document():
+#     pythoncom.CoInitialize()  # Initialize COM
+#     try:
+#         # Validate request data
+#         if not request.is_json:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Request must be JSON"
+#             }), 400
+
+#         # Get outward number and file data from request
+#         data = request.json
+#         if not data:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "No JSON data received"
+#             }), 400
+
+#         outward_number = data.get('outwardNumber')
+#         coordinates_data = data.get('fileData')
+
+#         if not outward_number or not coordinates_data:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Missing required fields: outwardNumber or fileData"
+#             }), 400
+
+#         logger.info(f"Processing outward number: {outward_number}")
+#         logger.info(f"Coordinates data: {coordinates_data}")
+
+#         # Fetch user data from API
+#         try:
+#             user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
+#             user_response.raise_for_status()
+#             user_data = user_response.json()
+#         except requests.exceptions.RequestException as e:
+#             logger.error(f"Error fetching user data: {str(e)}")
+#             return jsonify({
+#                 "success": False,
+#                 "error": f"Failed to fetch user data: {str(e)}"
+#             }), 500
+
+#         # Verify template file exists
+#         template_path = "MOD 2.docx"
+#         if not os.path.exists(template_path):
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Template file not found"
+#             }), 500
+
+#         # Create document
+#         try:
+#             docmonarch = Document(template_path)
+#         except Exception as e:
+#             logger.error(f"Error creating document: {str(e)}")
+#             return jsonify({
+#                 "success": False,
+#                 "error": f"Failed to create document: {str(e)}"
+#             }), 500
+
+#         # Update user information
+#         try:
+#             name_on_certificate = user_data["user"]["nameoncertificate"]
+#             corresponding_Address = user_data["user"]["correspondanceadress"]
+#             Survey_no = "Survey No." + user_data["user"]["gutnumber"]
+#             site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
+
+#             # Update paragraphs
+#             if len(docmonarch.paragraphs) > 6:
+#                 paragraph = docmonarch.paragraphs[6]
+#                 paragraph.clear()
+#                 run = paragraph.add_run(name_on_certificate)
+#                 run.font.name = 'Arial'
+#                 run.font.size = Pt(12)
+#                 run.font.bold = True
+#                 set_paragraph_format(paragraph)
+
+#             if len(docmonarch.paragraphs) > 8:
+#                 paragraph = docmonarch.paragraphs[8]
+#                 paragraph.clear()
+#                 run = paragraph.add_run(corresponding_Address)
+#                 run.font.name = 'Arial'
+#                 run.font.size = Pt(12)
+#                 run.font.bold = True
+#                 set_paragraph_format(paragraph)
+
+#             if len(docmonarch.paragraphs) > 15:
+#                 paragraph = docmonarch.paragraphs[7]
+#                 paragraph.clear()
+#                 run = paragraph.add_run(Survey_no)
+#                 run.font.name = 'Arial'
+#                 run.font.size = Pt(12)
+#                 run.font.bold = True
+
+#             if len(docmonarch.paragraphs) > 17:
+#                 paragraph = docmonarch.paragraphs[7]
+#                 paragraph.clear()
+#                 run = paragraph.add_run(site_adress)
+#                 run.font.name = 'Arial'
+#                 run.font.size = Pt(12)
+#                 run.font.bold = True
+
+#             # Update table with coordinates data
+#             if docmonarch.tables:
+#                 if len(docmonarch.tables) > 1:
+#                     for table in docmonarch.tables[1:]:
+#                         table._element.getparent().remove(table._element)
+                
+#                 table = docmonarch.tables[0]
+#                 row_index = 3
+
+#                 # Remove existing data rows
+#                 for _ in range(len(table.rows) - row_index):
+#                     table._element.remove(table.rows[row_index]._element)
+
+                
+#                 serial_number = 1
+#                 for entry in coordinates_data:
+#                     new_row = table.add_row()
+#                     new_row.cells[0].text = str(serial_number)
+    
+#     # Check that all other cells are populated correctly
+#                     for i, cell in enumerate(new_row.cells):
+#                         if i == 1:
+#                            cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
+#                         elif i == 2:
+#                            cell.text = entry['latitude_dms']
+#                         elif i == 3:
+#                            cell.text = entry['longitude_dms']
+#                         elif i == 4:
+#                             cell.text = str(entry['Height'])
+#                         elif i == 5 and 'distances_to_reference_points_km' in entry:
+#                             cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
+#                         elif i == 6 and 'distances_to_reference_points_km' in entry:
+#                             cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
+#                         elif i == 7 and 'boundary_distances' in entry:
+#                             cell.text = (
+#                                f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
+#                                f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
+#                             )
+
+#         # Set the font and formatting for each cell
+#                         for para in cell.paragraphs:
+#                             for run in para.runs:
+#                                 run.font.name = "Arial"
+#                                 run.font.size = Pt(12)
+
+#                     serial_number += 1
+
+                
+#                 set_table_borders(table)
+
+#             # Save document
+#             output_docx = 'modified_output.docx'
+#             output_pdf = 'modified_output.pdf'
+#             docmonarch.save(output_docx)
+            
+#             # Convert to PDF
+#             word = comtypes.client.CreateObject("Word.Application")
+#             word.Visible = False
+            
+#             doc = word.Documents.Open(os.path.abspath(output_docx))
+#             doc.SaveAs(os.path.abspath(output_pdf), FileFormat=17)
+#             doc.Close()
+#             word.Quit()
+
+#             return jsonify({
+#                 "success": True,
+#                 "message": "Document generated successfully",
+#                 "docPath": os.path.abspath(output_docx)
+#             })
+
+#         except Exception as e:
+#             logger.error(f"Error during document generation: {str(e)}")
+#             return jsonify({
+#                 "success": False,
+#                 "error": f"Error during document generation: {str(e)}"
+#             }), 500
+#         finally:
+#             pythoncom.CoUninitialize()
+
+#     except Exception as e:
+#         logger.error(f"Unexpected error: {str(e)}")
+#         return jsonify({
+#             "success": False,
+#             "error": f"Unexpected error: {str(e)}"
+#         }), 500
