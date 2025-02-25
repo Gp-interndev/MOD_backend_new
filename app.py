@@ -571,66 +571,63 @@ def set_paragraph_format(paragraph):
     paragraph_format.space_after = Pt(6)
     paragraph_format.space_before = Pt(6)
 
+
 def convert_to_pdf(input_docx, output_pdf):
     """
-    Convert docx to PDF using the appropriate method based on operating system.
+    Convert DOCX to PDF using `docx2pdf` on Windows and LibreOffice on Linux.
     """
     system = platform.system()
-    
+
     if system == "Windows":
         try:
-            # Use docx2pdf on Windows
+            import pythoncom
             from docx2pdf import convert
+            
+            pythoncom.CoInitialize()  # Initialize COM for Windows
             convert(input_docx, output_pdf)
+            pythoncom.CoUninitialize()  # Clean up COM
+            
             return True
         except Exception as e:
             logger.error(f"Error using docx2pdf on Windows: {str(e)}")
             return False
-    else:
+
+    else:  # Linux/macOS
         try:
-            # Use LibreOffice on Linux/Mac
-            # Check if LibreOffice or soffice is installed
+            # Find the correct LibreOffice binary
             libreoffice_commands = ["libreoffice", "soffice"]
-            command = None
+            command = next((cmd for cmd in libreoffice_commands if subprocess.run([cmd, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False).returncode == 0), None)
             
-            for cmd in libreoffice_commands:
-                try:
-                    subprocess.run([cmd, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-                    command = cmd
-                    break
-                except (subprocess.SubprocessError, FileNotFoundError):
-                    continue
-            
-            if command is None:
+            if not command:
                 logger.error("Neither LibreOffice nor soffice found. Please install LibreOffice.")
                 return False
-            
-            # Convert using LibreOffice headless mode
+
+            output_dir = os.path.dirname(output_pdf) or "."
+
             process = subprocess.run(
-                [command, "--headless", "--convert-to", "pdf", "--outdir", 
-                 os.path.dirname(output_pdf) or ".", input_docx],
+                [command, "--headless", "--convert-to", "pdf", "--outdir", output_dir, input_docx],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False
             )
-            
+
             if process.returncode != 0:
                 logger.error(f"Error converting with LibreOffice: {process.stderr.decode()}")
                 return False
-            
-            # LibreOffice will save the file with the same name but .pdf extension
-            # Rename if necessary
+
+            # Rename output file if necessary
             input_basename = os.path.splitext(os.path.basename(input_docx))[0]
-            libreoffice_output = os.path.join(os.path.dirname(output_pdf) or ".", f"{input_basename}.pdf")
-            
+            libreoffice_output = os.path.join(output_dir, f"{input_basename}.pdf")
+
             if libreoffice_output != output_pdf:
                 os.rename(libreoffice_output, output_pdf)
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error converting to PDF on Linux/Mac: {str(e)}")
             return False
+
 
 @app.route('/generate_doc', methods=['POST'])
 def generate_document():
@@ -785,7 +782,7 @@ def generate_document():
             # Save document
             output_docx = 'modified_output.docx'
             output_pdf = 'modified_output.pdf'
-            docmonarch.save(output_docx)
+            docmonarch.save(output_docx)     
             
             # Convert to PDF using platform-specific method
             if convert_to_pdf(output_docx, output_pdf):
