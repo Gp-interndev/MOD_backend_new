@@ -1034,8 +1034,8 @@ def generate_document():
                 "error": "No JSON data received"
             }), 400
 
-        # outward_number = data.get('outwardNumber')
-        outward_number = '1069'
+        outward_number = data.get('outwardNumber')
+        # outward_number = '1069'
         coordinates_data = data.get('fileData')
 
         if not outward_number or not coordinates_data:
