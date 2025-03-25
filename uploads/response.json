@@ -1,0 +1,358 @@
+{
+  "Height of building from sea surface": "573.4 + 15.35 = 588.05 M",
+  "Height of plot from sea surface": "573.7 + 15.35 = 589.05 M",
+  "boundary_distances": {
+    "LohgaonBoundaryMinDistance": 2.079742308280351,
+    "NDAboundaryMinDistance": 17.340447329618407
+  },
+  "decimal_degrees": [
+    {
+      "Height": 544.608,
+      "P_name": " P1",
+      "distances_to_reference_points_km": {
+        "NDA": 18.270877976684066,
+        "loh": 2.7901652305279674
+      },
+      "latitude": 73.94247967987724,
+      "latitude_dms": "18\u00b032'47.23\"",
+      "longitude": 18.546453972701137,
+      "longitude_dms": "73\u00b056'32.93\""
+    },
+    {
+      "Height": 547.738,
+      "P_name": " P2",
+      "distances_to_reference_points_km": {
+        "NDA": 18.363069773884536,
+        "loh": 2.871919595119311
+      },
+      "latitude": 73.94330797950212,
+      "latitude_dms": "18\u00b032'47.99\"",
+      "longitude": 18.54666520187536,
+      "longitude_dms": "73\u00b056'35.91\""
+    },
+    {
+      "Height": 547.0,
+      "P_name": " P3",
+      "distances_to_reference_points_km": {
+        "NDA": 18.464960343439998,
+        "loh": 2.9624923960747385
+      },
+      "latitude": 73.94422225477301,
+      "latitude_dms": "18\u00b032'48.95\"",
+      "longitude": 18.546931707927207,
+      "longitude_dms": "73\u00b056'39.20\""
+    },
+    {
+      "Height": 547.27,
+      "P_name": " P4",
+      "distances_to_reference_points_km": {
+        "NDA": 18.470180895287687,
+        "loh": 2.975010036815002
+      },
+      "latitude": 73.9442869157245,
+      "latitude_dms": "18\u00b032'47.15\"",
+      "longitude": 18.546431109353374,
+      "longitude_dms": "73\u00b056'39.43\""
+    },
+    {
+      "Height": 546.118,
+      "P_name": " P5",
+      "distances_to_reference_points_km": {
+        "NDA": 18.47622736502742,
+        "loh": 2.9856850090907883
+      },
+      "latitude": 73.94435304172458,
+      "latitude_dms": "18\u00b032'45.97\"",
+      "longitude": 18.546102156602917,
+      "longitude_dms": "73\u00b056'39.67\""
+    },
+    {
+      "Height": 535.833,
+      "P_name": " P6",
+      "distances_to_reference_points_km": {
+        "NDA": 18.502684674394583,
+        "loh": 3.0212784034989704
+      },
+      "latitude": 73.94461721674288,
+      "latitude_dms": "18\u00b032'43.39\"",
+      "longitude": 18.54538697142474,
+      "longitude_dms": "73\u00b056'40.62\""
+    },
+    {
+      "Height": 538.227,
+      "P_name": " P7",
+      "distances_to_reference_points_km": {
+        "NDA": 18.45703032915546,
+        "loh": 2.9831297552630853
+      },
+      "latitude": 73.9442126787504,
+      "latitude_dms": "18\u00b032'42.43\"",
+      "longitude": 18.54511823028591,
+      "longitude_dms": "73\u00b056'39.17\""
+    },
+    {
+      "Height": 539.312,
+      "P_name": " P8",
+      "distances_to_reference_points_km": {
+        "NDA": 18.40056255719915,
+        "loh": 2.9360282336630976
+      },
+      "latitude": 73.94371185769744,
+      "latitude_dms": "18\u00b032'41.28\"",
+      "longitude": 18.54479946379453,
+      "longitude_dms": "73\u00b056'37.36\""
+    },
+    {
+      "Height": 544.784,
+      "P_name": " P9",
+      "distances_to_reference_points_km": {
+        "NDA": 18.384681858486495,
+        "loh": 2.915148189674155
+      },
+      "latitude": 73.94355461029558,
+      "latitude_dms": "18\u00b032'42.69\"",
+      "longitude": 18.54519240289761,
+      "longitude_dms": "73\u00b056'36.80\""
+    },
+    {
+      "Height": 544.389,
+      "P_name": " P10",
+      "distances_to_reference_points_km": {
+        "NDA": 18.361049068028866,
+        "loh": 2.887223399823727
+      },
+      "latitude": 73.94332724532947,
+      "latitude_dms": "18\u00b032'44.08\"",
+      "longitude": 18.545578560410153,
+      "longitude_dms": "73\u00b056'35.98\""
+    },
+    {
+      "Height": 543.282,
+      "P_name": " P11",
+      "distances_to_reference_points_km": {
+        "NDA": 18.33919357816281,
+        "loh": 2.861805756218065
+      },
+      "latitude": 73.94311778470168,
+      "latitude_dms": "18\u00b032'45.27\"",
+      "longitude": 18.545909502993123,
+      "longitude_dms": "73\u00b056'35.22\""
+    },
+    {
+      "Height": 548.51,
+      "P_name": " B1",
+      "distances_to_reference_points_km": {
+        "NDA": 18.31282264427438,
+        "loh": 2.828909750114631
+      },
+      "latitude": 73.94286010136342,
+      "latitude_dms": "18\u00b032'47.21\"",
+      "longitude": 18.54644775267696,
+      "longitude_dms": "73\u00b056'34.30\""
+    },
+    {
+      "Height": 547.01,
+      "P_name": " B2",
+      "distances_to_reference_points_km": {
+        "NDA": 18.34557441152198,
+        "loh": 2.8580048250677486
+      },
+      "latitude": 73.94315443427017,
+      "latitude_dms": "18\u00b032'47.47\"",
+      "longitude": 18.546520574722415,
+      "longitude_dms": "73\u00b056'35.36\""
+    },
+    {
+      "Height": 547.73,
+      "P_name": " B3",
+      "distances_to_reference_points_km": {
+        "NDA": 18.40242649798124,
+        "loh": 2.9086968307005603
+      },
+      "latitude": 73.94366534803417,
+      "latitude_dms": "18\u00b032'47.93\"",
+      "longitude": 18.546646967733942,
+      "longitude_dms": "73\u00b056'37.20\""
+    },
+    {
+      "Height": 547.6,
+      "P_name": " B4",
+      "distances_to_reference_points_km": {
+        "NDA": 18.455347186484694,
+        "loh": 2.9560632477870343
+      },
+      "latitude": 73.94414087174819,
+      "latitude_dms": "18\u00b032'48.36\"",
+      "longitude": 18.546766212144547,
+      "longitude_dms": "73\u00b056'38.91\""
+    },
+    {
+      "Height": 545.83,
+      "P_name": " B5",
+      "distances_to_reference_points_km": {
+        "NDA": 18.464768033412145,
+        "loh": 2.970165688479062
+      },
+      "latitude": 73.94423829413255,
+      "latitude_dms": "18\u00b032'47.11\"",
+      "longitude": 18.54641850216393,
+      "longitude_dms": "73\u00b056'39.26\""
+    },
+    {
+      "Height": 544.27,
+      "P_name": " B6",
+      "distances_to_reference_points_km": {
+        "NDA": 18.423397716621263,
+        "loh": 2.9380907501805127
+      },
+      "latitude": 73.94387750626949,
+      "latitude_dms": "18\u00b032'45.63\"",
+      "longitude": 18.54600820698702,
+      "longitude_dms": "73\u00b056'37.96\""
+    },
+    {
+      "Height": 544.9,
+      "P_name": " B7",
+      "distances_to_reference_points_km": {
+        "NDA": 18.382849526183193,
+        "loh": 2.90689796890733
+      },
+      "latitude": 73.94352386120642,
+      "latitude_dms": "18\u00b032'44.18\"",
+      "longitude": 18.545606048194276,
+      "longitude_dms": "73\u00b056'36.69\""
+    },
+    {
+      "Height": 545.12,
+      "P_name": " B8",
+      "distances_to_reference_points_km": {
+        "NDA": 18.372941629624698,
+        "loh": 2.8952984714559005
+      },
+      "latitude": 73.94342875073822,
+      "latitude_dms": "18\u00b032'44.74\"",
+      "longitude": 18.545761022890773,
+      "longitude_dms": "73\u00b056'36.34\""
+    },
+    {
+      "Height": 544.44,
+      "P_name": " B9",
+      "distances_to_reference_points_km": {
+        "NDA": 18.349931599106682,
+        "loh": 2.871386595405847
+      },
+      "latitude": 73.94321440421244,
+      "latitude_dms": "18\u00b032'45.35\"",
+      "longitude": 18.545929753175578,
+      "longitude_dms": "73\u00b056'35.57\""
+    },
+    {
+      "Height": 544.49,
+      "P_name": " B10",
+      "distances_to_reference_points_km": {
+        "NDA": 18.364298288950614,
+        "loh": 2.8823672652227996
+      },
+      "latitude": 73.94333963278717,
+      "latitude_dms": "18\u00b032'45.87\"",
+      "longitude": 18.546073878419808,
+      "longitude_dms": "73\u00b056'36.02\""
+    },
+    {
+      "Height": 544.99,
+      "P_name": " B11",
+      "distances_to_reference_points_km": {
+        "NDA": 18.387547141587948,
+        "loh": 2.9065139510598206
+      },
+      "latitude": 73.94355614785907,
+      "latitude_dms": "18\u00b032'45.26\"",
+      "longitude": 18.54590534086729,
+      "longitude_dms": "73\u00b056'36.80\""
+    },
+    {
+      "Height": 545.13,
+      "P_name": " B12",
+      "distances_to_reference_points_km": {
+        "NDA": 18.416405609238264,
+        "loh": 2.9287681135146606
+      },
+      "latitude": 73.94380785648185,
+      "latitude_dms": "18\u00b032'46.29\"",
+      "longitude": 18.546190498197006,
+      "longitude_dms": "73\u00b056'37.71\""
+    },
+    {
+      "Height": 546.1,
+      "P_name": " B13",
+      "distances_to_reference_points_km": {
+        "NDA": 18.443681917021642,
+        "loh": 2.949915163015868
+      },
+      "latitude": 73.94404575356124,
+      "latitude_dms": "18\u00b032'47.26\"",
+      "longitude": 18.54645999838655,
+      "longitude_dms": "73\u00b056'38.56\""
+    },
+    {
+      "Height": 546.62,
+      "P_name": " B14",
+      "distances_to_reference_points_km": {
+        "NDA": 18.440775199946444,
+        "loh": 2.9457069698403284
+      },
+      "latitude": 73.94401602857278,
+      "latitude_dms": "18\u00b032'47.61\"",
+      "longitude": 18.546557656511418,
+      "longitude_dms": "73\u00b056'38.46\""
+    },
+    {
+      "Height": 547.55,
+      "P_name": " B15",
+      "distances_to_reference_points_km": {
+        "NDA": 18.39785982906023,
+        "loh": 2.907432805749882
+      },
+      "latitude": 73.94363058519907,
+      "latitude_dms": "18\u00b032'47.24\"",
+      "longitude": 18.546456031625244,
+      "longitude_dms": "73\u00b056'37.07\""
+    },
+    {
+      "Height": 545.49,
+      "P_name": " B16",
+      "distances_to_reference_points_km": {
+        "NDA": 18.39079267244564,
+        "loh": 2.904110256140114
+      },
+      "latitude": 73.94357368091654,
+      "latitude_dms": "18\u00b032'46.50\"",
+      "longitude": 18.546249617966776,
+      "longitude_dms": "73\u00b056'36.87\""
+    },
+    {
+      "Height": 545.1,
+      "P_name": " B17",
+      "distances_to_reference_points_km": {
+        "NDA": 18.36127557241605,
+        "loh": 2.877939507730432
+      },
+      "latitude": 73.94330865904703,
+      "latitude_dms": "18\u00b032'46.24\"",
+      "longitude": 18.546177340154934,
+      "longitude_dms": "73\u00b056'35.91\""
+    },
+    {
+      "Height": 545.87,
+      "P_name": " B18",
+      "distances_to_reference_points_km": {
+        "NDA": 18.323149302781285,
+        "loh": 2.844156145021781
+      },
+      "latitude": 73.94296616949855,
+      "latitude_dms": "18\u00b032'45.92\"",
+      "longitude": 18.5460888318846,
+      "longitude_dms": "73\u00b056'34.68\""
+    }
+  ]
+}

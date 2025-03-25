@@ -16,7 +16,7 @@ from shapely.geometry import Polygon
 from shapely.ops import nearest_points
 from werkzeug.utils import secure_filename
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import requests
@@ -27,7 +27,9 @@ import logging
 # import pypandoc
 from docx2pdf import convert
 import platform
-import subprocess
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+# import geopandas as gpd
+
 
 
 app = Flask(__name__)
@@ -38,6 +40,7 @@ DB_HOST = "iwmsgis.pmc.gov.in"
 DB_NAME = "MOD"
 DB_USER = "postgres"
 DB_PASS = "pmc992101"
+DB_PORT = "5432" 
 
 def get_db_connection():
     """Establish connection to PostgreSQL"""
@@ -48,11 +51,22 @@ def get_db_connection():
         password=DB_PASS
     )
 
+
+# Database connection For Update_csv api
+# DB_NAME = "mod"
+# DB_USER = "postgres"
+# DB_PASSWORD = "Mojani@992101"
+# DB_HOST = "info.dpzoning.com"  #info.dpzoning.com
+# DB_PORT = "5432"  
+
+
+
+
 # Login Route
-
-
 @app.route('/admin_login', methods=['POST'])
 def admin_login():
+    conn = None
+    cursor = None
     try:
         data = request.json
         username = data.get("username")
@@ -82,8 +96,11 @@ def admin_login():
     except psycopg2.Error as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        # Close cursor and connection only if they were initialized
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 
@@ -99,7 +116,7 @@ def save_user():
         nameoncertificate = data.get("nameoncertificate")
         gstnumber = data.get("gstnumber") if data.get("gstnumber") else None
         pannumber = data.get("pannumber") if data.get("pannumber") else None
-        siteadress = data.get("siteadress")
+        # siteadress = data.get("siteadress")
         gutnumber = data.get("gutnumber") 
         district = data.get("district")
         taluka = data.get("taluka")
@@ -118,13 +135,13 @@ def save_user():
         # SQL Query to Insert Data
         insert_query = """
         INSERT INTO public.userdata 
-        (name, mobilenumber, nameoncertificate, gstnumber, pannumber, siteadress, gutnumber, 
+        (name, mobilenumber, nameoncertificate, gstnumber, pannumber, gutnumber, 
          district, taluka, village, pincode, correspondanceadress,  date) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING outwardnumber
         """
         cursor.execute(insert_query, (name, mobilenumber, nameoncertificate, gstnumber, pannumber, 
-                                      siteadress, gutnumber, district, taluka, village, pincode, 
+                                       gutnumber, district, taluka, village, pincode, 
                                       correspondanceadress,  date))
 
         outwardnumber = cursor.fetchone()[0]
@@ -149,7 +166,7 @@ def get_user_by_outwardnumber(outwardnumber):
 
         # Query with explicit column selection to avoid incorrect mapping
         query = """SELECT outwardnumber, name, mobilenumber, nameoncertificate, gstnumber, 
-                   pannumber, siteadress, gutnumber, district, taluka, village, 
+                   pannumber, gutnumber, district, taluka, village, 
                    pincode, correspondanceadress, date FROM userdata WHERE outwardnumber = %s"""
         cursor.execute(query, (outwardnumber,))
         user = cursor.fetchone()
@@ -160,7 +177,7 @@ def get_user_by_outwardnumber(outwardnumber):
         if user:
             # Define column names explicitly in the correct order
             columns = ["outwardnumber", "name", "mobilenumber", "nameoncertificate", "gstnumber", 
-                       "pannumber", "siteadress", "gutnumber", "district", "taluka", "village", 
+                       "pannumber", "gutnumber", "district", "taluka", "village", 
                        "pincode", "correspondanceadress", "date"]
  
             user_data = dict(zip(columns, user))  # Convert tuple to dictionary
@@ -196,9 +213,22 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
+# def calculate_distance(lat1, lon1, lat2, lon2):
+#     # Create Point objects
+#     point1 = Point(lon1, lat1)
+#     point2 = Point(lon2, lat2)
+    
+#     # Create a GeoDataFrame
+#     gdf = gpd.GeoDataFrame(geometry=[point1, point2], crs="EPSG:4326")
+    
+#     # Calculate the distance
+#     distance = gdf.distance(gdf.shift()).iloc[1]  # Distance between the two points
+#     return distance / 1000  # Convert meters to kilometers
 
 
-def map_sattelite(coords, points_with_labels,nearest_points_list, output_map="map.html"):
+
+
+def map_sattelite(coords, points_with_labels,nearest_points_list, output_map="static/map.html"):
     """
     Create a folium map with a polygon, labeled points, and an export-to-PDF button on Google Satellite imagery.
     
@@ -210,9 +240,10 @@ def map_sattelite(coords, points_with_labels,nearest_points_list, output_map="ma
     Returns:
         str: Path to the saved HTML map.
     """
-   
+    swapped_coords = [(lat,lon) for lon, lat  in coords]
     m = folium.Map(
-        location=[coords[0][0], coords[0][1]],
+        # location=[coords[0][0], coords[0][1]],
+        location = swapped_coords[0],
         zoom_start=10,
         tiles=None  # Disable default tiles
     )
@@ -236,7 +267,7 @@ def map_sattelite(coords, points_with_labels,nearest_points_list, output_map="ma
     ).add_to(m) 
     
     polygon = folium.Polygon(
-        locations=coords,  # List of (latitude, longitude) tuples
+        locations=swapped_coords,  # List of (latitude, longitude) tuples
         color="red",
         weight=3,
         fill=True,
@@ -263,6 +294,7 @@ def map_sattelite(coords, points_with_labels,nearest_points_list, output_map="ma
         fmt="image/png",
         transparent=True,
         overlay=True,
+        opacity = 0.5,
         control=True
     ).add_to(m)
 
@@ -416,6 +448,8 @@ def calculate_boundaryDistance(coords):
     distance_meters_nda = polygon_nda.distance(polygon_layout)
     distance_meters_lohgaon = polygon_lohgaon.distance(polygon_layout)
     distance_km_nda = distance_meters_nda / 1000
+
+    # print(distance_km_nda,"ooooooooooooooooooooooooooooooooooooooooooooooooooooo")
     distance_km_lohgaon = distance_meters_lohgaon / 1000
     
     # Return the distances in a dictionary
@@ -430,6 +464,11 @@ def calculate_boundaryDistance(coords):
     return mindistance,nearest_points_list
 
 # Route to handle CSV file upload and processing
+
+
+
+
+
 
 ALLOWED_EXTENSIONS = {'csv'}
 
@@ -448,7 +487,7 @@ def process_csv():
     if file and allowed_file(file.filename):
         try:
             filename = secure_filename(file.filename)
-            data = pd.read_csv(file)
+            data = pd.read_csv(file,header=None)
 
             print("Columns in CSV:", data.columns)
             
@@ -493,7 +532,7 @@ def process_csv():
                 
                 distances = {}
                 for ref_name, ref_coords in reference_points.items():
-                    distances[ref_name] = float(haversine(lat, lon, ref_coords["latitude"], ref_coords["longitude"]))
+                    distances[ref_name] =(haversine(lat, lon, ref_coords["latitude"], ref_coords["longitude"]))
 
                 if isinstance(p_name, str) and re.match(r"^\s*[Pp]", p_name):
                     points = (float(lat), float(lon))
@@ -506,8 +545,8 @@ def process_csv():
                     "latitude": lat,
                     "longitude": lon,
                     "Height": elevation_val,
-                    "latitude_dms": f"{lat_dms[0]}°{lat_dms[1]}'{lat_dms[2]:.4f}\"",
-                    "longitude_dms": f"{lon_dms[0]}°{lon_dms[1]}'{lon_dms[2]:.4f}\"",
+                    "longitude_dms": f"{lat_dms[0]}°{lat_dms[1]}'{lat_dms[2]:.2f}\"",
+                    "latitude_dms": f"{lon_dms[0]}°{lon_dms[1]}'{lon_dms[2]:.2f}\"",
                     "distances_to_reference_points_km": distances,
                 })
 
@@ -518,7 +557,7 @@ def process_csv():
                 "NDAboundaryMinDistance": float(boundary_distances["NDAboundaryMinDistance"]),
                 "LohgaonBoundaryMinDistance": float(boundary_distances["LohgaonBoundaryMinDistance"])
             }
-
+            print(fpoints, fpointswithlabel, nearest_points_list)
             map_sattelite(fpoints, fpointswithlabel, nearest_points_list)
 
             result = {
@@ -541,6 +580,300 @@ def process_csv():
 
 
 
+@app.route('/update_csv', methods=['POST'])
+def update_csv():
+    # Get outward number from the form data
+    outwardnumber = request.form.get('outwardNumber')
+    # outwardnumber = '1069'
+    if not outwardnumber:
+        return jsonify({"error": "Outward number is required"}), 400
+    
+    file = request.files.get('file')  
+    if file and allowed_file(file.filename):
+        try:
+            # First, fetch user data using the outward number
+            conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST, port=DB_PORT)
+            cur = conn.cursor()
+            
+           
+            user_query = """
+                SELECT name, district, taluka, village, date, correspondanceadress, gutnumber
+                FROM userdata WHERE outwardnumber = %s
+            """
+            cur.execute(user_query, (outwardnumber,))
+            user_data = cur.fetchone()
+            
+            if not user_data:
+                return jsonify({"error": f"No user found with outward number: {outwardnumber}"}), 404
+                
+            # Extract user data
+            user_name, district, taluka, village, date, address, gut = user_data
+            
+            # CSV processing
+            filename = secure_filename(file.filename)
+            data = pd.read_csv(file,header=None)
+            pointplotCoordiantes, pointbuildingCoordiantes = [], []
+            plotCoordiantes, buildingCoordiantes = [], []
+
+            print("Columns in CSV:", data.columns)
+            print(f"Using outward number: {outwardnumber}")
+
+            if data.shape[1] < 3:
+                return jsonify({"error": "CSV file must contain at least 3 columns (P name, UTM x, UTM y)"}), 400
+
+            
+            reference_points = {
+                "NDA": {"utm_x": 371129.923, "utm_y": 2042927.865},
+                "loh": {"utm_x": 385999.526, "utm_y": 2055079.640},
+            }
+
+            # Create transformer object for coordinate conversion
+            utm = Proj('epsg:32643')  
+            wgs84 = Proj('epsg:4326') 
+
+            
+            for ref_name, ref_coords in reference_points.items():
+                lon, lat = transform(utm, wgs84, ref_coords["utm_x"], ref_coords["utm_y"])
+                reference_points[ref_name]["latitude"] = float(lat)
+                reference_points[ref_name]["longitude"] = float(lon)
+
+            print(reference_points,"ppppopopiouiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
+            for index, row in data.iterrows():
+                labelName, utmXcoordiantes, utmYcoordinates, Zcoordinates = row[0], row[1], row[2], row[3]
+                print(labelName, utmXcoordiantes, utmYcoordinates, Zcoordinates)
+                pattern = r"^\s*[Pp]"
+
+                
+                lon, lat = transform(utm, wgs84, float(utmXcoordiantes), float(utmYcoordinates))
+                lat, lon = float(lat), float(lon)
+                
+            
+                nda_distance = haversine(lat, lon, reference_points["NDA"]["latitude"], reference_points["NDA"]["longitude"])
+                print(nda_distance,"VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV")
+                loh_distance = haversine(lat, lon, reference_points["loh"]["latitude"], reference_points["loh"]["longitude"])
+
+                # Check if the label name starts with "P" or "p" (with optional spaces)
+                if re.match(pattern, labelName):
+                    print("------------------------------------------------------")
+                    pointplotCoordiantes.append((labelName, utmXcoordiantes, utmYcoordinates, Zcoordinates, nda_distance, loh_distance))
+                    plotCoordiantes.append((utmXcoordiantes, utmYcoordinates, Zcoordinates))
+                else:
+                    pointbuildingCoordiantes.append((labelName, utmXcoordiantes, utmYcoordinates, Zcoordinates, nda_distance, loh_distance))
+                    buildingCoordiantes.append((utmXcoordiantes, utmYcoordinates, Zcoordinates))
+
+
+            if plotCoordiantes and plotCoordiantes[0] != plotCoordiantes[-1]:
+                plotCoordiantes.append(plotCoordiantes[0])
+
+            if buildingCoordiantes and buildingCoordiantes[0] != buildingCoordiantes[-1]:
+                buildingCoordiantes.append(buildingCoordiantes[0])
+
+            # Create the polygon for plotCoordiantes
+            plot_polygon_wkt = "POLYGONZ((" + ", ".join(f"{x} {y} {z}" for x, y, z in plotCoordiantes) + "))"
+            
+            # Create the polygon for buildingCoordiantes
+            building_polygon_wkt = "POLYGONZ((" + ", ".join(f"{x} {y} {z}" for x, y, z in buildingCoordiantes) + "))"
+
+            # Insert building coordinates if available
+            if buildingCoordiantes:
+                for name, x, y, z, nda_dist, loh_dist in pointbuildingCoordiantes:
+                    point_wkt = f"POINTZ({x} {y} {z})"
+                    # Use quoted column names to preserve case and include user data
+                    cur.execute("""
+                        INSERT INTO points (pointname, geom, outward, typeofsite, "Distance_from_NDA", "Distance_from_lohgaon",
+                                            name, districtname, talukaname, villagename, date, address, gut, "Height_AMSL") 
+                        VALUES (%s, ST_GeomFromText(%s, 32643), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """, (name, point_wkt, outwardnumber, "building", nda_dist, loh_dist,
+                        user_name, district, taluka, village, date, address, gut, z))
+
+                # Insert the building polygon into the `mod` table
+                cur.execute("INSERT INTO mod (geom, outward, typeofsite) VALUES (ST_GeomFromText(%s, 32643), %s, %s);", 
+                            (building_polygon_wkt, outwardnumber, "building"))
+
+            # Insert plot coordinates 
+            if plotCoordiantes:
+                for name, x, y, z, nda_dist, loh_dist in pointplotCoordiantes:
+                    point_wkt = f"POINTZ({x} {y} {z})"
+                    
+                    cur.execute("""
+                        INSERT INTO points (pointname, geom, outward, typeofsite, "Distance_from_NDA", "Distance_from_lohgaon",
+                                            name, districtname, talukaname, villagename, date, address, gut, "Height_AMSL") 
+                        VALUES (%s, ST_GeomFromText(%s, 32643), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """, (name, point_wkt, outwardnumber, "plot", nda_dist, loh_dist,
+                        user_name, district, taluka, village, date, address, gut, z))
+
+                # Insert the plot polygon into the `mod` table
+                cur.execute("INSERT INTO mod (geom, outward, typeofsite) VALUES (ST_GeomFromText(%s, 32643), %s, %s);", 
+                            (plot_polygon_wkt, outwardnumber, "plot"))
+
+           
+            conn.commit()
+
+            
+            cur.close()
+            conn.close()
+
+            return jsonify({
+                "message": "CSV data processed and inserted successfully!",
+                "distances_added": True,
+                "user_data_added": True
+            })
+
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"Error details: {error_details}")
+            return jsonify({"error": f"An error occurred: {str(e)}", "details": error_details}), 500
+
+    else:
+        return jsonify({"error": "No file or invalid file format."}), 400
+
+
+@app.route('/get_aviation_data/<string:outwardnumber>', methods=['GET'])
+def get_aviation_data_and_geometry(outwardnumber):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Step 1: Get the latest geometry for this outward number
+        cur.execute("""
+            SELECT geom FROM mod 
+            WHERE outward = %s
+            ORDER BY id DESC
+            LIMIT 1;
+        """, (outwardnumber,))
+
+        result = cur.fetchone()
+
+        if not result:
+            return jsonify({"error": "No geometry found for this outward number"}), 404
+
+        geometry = result[0]
+
+        # Step 2: Query aviation data that intersects with the geometry
+        cur.execute("""
+            SELECT zone, elevation
+            FROM "Aviation_data"
+            WHERE ST_Intersects(geom, ST_Transform(ST_SetSRID(%s::geometry, 32643), 4326))
+            LIMIT 1;
+        """, (geometry,))
+
+        aviation_data = cur.fetchone()
+
+        # Add debug logging
+        if aviation_data:
+            print(f"Found aviation data: {aviation_data}")
+        else:
+            print(f"No aviation data found that intersects with this geometry")
+            
+            # Additional debugging query to check if Aviation_data table has any records
+            cur.execute("SELECT COUNT(*) FROM Aviation_data")
+            count = cur.fetchone()[0]
+            print(f"Total records in Aviation_data: {count}")
+
+        cur.close()
+        conn.close()
+
+        if not aviation_data:
+            return jsonify({
+                "geometry": geometry,
+                "aviation_data": None,
+                "message": "No aviation data found for this location"
+            }), 200
+
+        # Return both geometry and aviation data
+        return jsonify({
+            "geometry": geometry,
+            "aviation_data": {
+                "zone": aviation_data[0],
+                "elevation": aviation_data[1]
+            }
+        }), 200
+
+    except Exception as e:
+        import traceback
+        print(f"Error in get_aviation_data_and_geometry: {e}")
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
+
+
+# @app.route('/get_aviation_data/<string:outwardnumber>', methods=['GET'])
+# def get_aviation_data(outwardnumber):
+#     try:
+#         print(f"Fetching aviation data for outward number: {outwardnumber}")
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+
+#         # Get plot geometry for the given outward number
+#         cur.execute("""
+#             SELECT geom FROM mod 
+#             WHERE outward = %s AND typeofsite = 'plot'
+#         """, (outwardnumber,))
+        
+#         plot_geoms = cur.fetchall()  # Fetch all plots for the outward number
+
+#         # Get building geometry for the given outward number
+#         cur.execute("""
+#             SELECT geom FROM mod 
+#             WHERE outward = %s AND typeofsite = 'building'
+#         """, (outwardnumber,))
+        
+#         building_geoms = cur.fetchall()  # Fetch all buildings for the outward number
+
+#         if not plot_geoms and not building_geoms:
+#             print(f"No plot or building geometry found for outward number: {outwardnumber}")
+#             return jsonify({"error": "No plot or building geometry found for this outward number"}), 404
+
+#         # Combine both plot and building geometries (if necessary)
+#         all_geoms = plot_geoms + building_geoms
+        
+#         print(f"Found {len(all_geoms)} geometries for outward number: {outwardnumber}")
+
+#         # Query aviation data that intersects with any of the geometries (plot or building)
+#         aviation_data = None
+#         for geom in all_geoms:
+#             cur.execute("""
+#                 SELECT zone, elevation
+#                 FROM "Aviation_data"
+#                 WHERE ST_Intersects(geom, ST_Transform(ST_SetSRID(%s::geometry, 32643), 4326))
+#                 LIMIT 1;
+#             """, (geom[0],))
+            
+#             aviation_data = cur.fetchone()
+#             if aviation_data:
+#                 break  # Exit the loop once aviation data is found
+        
+#         # Add debug logging
+#         if aviation_data:
+#             print(f"Found aviation data: {aviation_data}")
+#         else:
+#             print(f"No aviation data found that intersects with this plot/building")
+
+#             # Additional debugging query to check if Aviation_data table has any records
+#             cur.execute("SELECT COUNT(*) FROM Aviation_data")
+#             count = cur.fetchone()[0]
+#             print(f"Total records in Aviation_data: {count}")
+        
+#         cur.close()
+#         conn.close()
+        
+#         if not aviation_data:
+#             return jsonify({"error": "No aviation data found for this location"}), 404
+        
+#         # Return the actual aviation data
+#         return jsonify({
+#             "zone": aviation_data[0],
+#             "elevation": aviation_data[1]
+#         }), 200
+        
+#     except Exception as e:
+#         import traceback
+#         print(f"Error in get_aviation_data: {e}")
+#         print(traceback.format_exc())
+#         return jsonify({"error": str(e)}), 500
+
 
 
 # Set up logging
@@ -551,26 +884,80 @@ logger = logging.getLogger(__name__)
 def set_table_borders(table):
     tbl = table._element
     tbl_pr = tbl.find(qn("w:tblPr"))
+    
+    # Ensure tblPr exists
     if tbl_pr is None:
         tbl_pr = OxmlElement("w:tblPr")
         tbl.insert(0, tbl_pr)
-
+    
+    # Set the table borders
     tbl_borders = OxmlElement("w:tblBorders")
     for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
         border = OxmlElement(f"w:{border_name}")
         border.set(qn("w:val"), "single")
-        border.set(qn("w:sz"), "5")
-        border.set(qn("w:space"), "0")
-        border.set(qn("w:color"), "000000")
+        border.set(qn("w:sz"), "5")  # Border size
+        border.set(qn("w:space"), "0")  # Border space
+        border.set(qn("w:color"), "000000")  # Border color
         tbl_borders.append(border)
     tbl_pr.append(tbl_borders)
 
+    # Prevent table rows from splitting across pages
+    cant_split = OxmlElement("w:cantSplit")
+    cant_split.set(qn("w:val"), "true")
+    tbl_pr.append(cant_split)
+    
+    # Keep the tblLook element too
+    tbl_look = OxmlElement("w:tblLook")
+    tbl_look.set(qn("w:val"), "04A0")
+    tbl_pr.append(tbl_look)
+
 def set_paragraph_format(paragraph):
     paragraph_format = paragraph.paragraph_format
-    paragraph_format.line_spacing = 1.5
-    paragraph_format.space_after = Pt(6)
-    paragraph_format.space_before = Pt(6)
+    paragraph_format.line_spacing = 1.5  # Set line spacing
+    paragraph_format.space_after = Pt(6)  # Space after paragraph
+    paragraph_format.space_before = Pt(6)  # Space before paragraph
 
+def set_cell_alignment(cell, vertical="center", horizontal="center"):
+    """
+    Set both vertical and horizontal alignment of the cell.
+    vertical can be "top", "center", or "bottom".
+    horizontal can be "left", "center", or "right".
+    """
+    # Get the cell's XML element
+    tc = cell._element
+    
+    # Ensure the cell has a <w:tcPr> element
+    tc_pr = tc.find(qn("w:tcPr"))
+    if tc_pr is None:
+        tc_pr = OxmlElement("w:tcPr")
+        tc.insert(0, tc_pr)
+    
+    # Create <w:vAlign> element and set vertical alignment
+    v_align = OxmlElement("w:vAlign")
+    v_align.set(qn("w:val"), vertical)
+    tc_pr.append(v_align)
+
+    # Set horizontal alignment
+    for paragraph in cell.paragraphs:
+        paragraph.alignment = {
+            "left": WD_ALIGN_PARAGRAPH.LEFT,
+            "center": WD_ALIGN_PARAGRAPH.CENTER,
+            "right": WD_ALIGN_PARAGRAPH.RIGHT,
+        }.get(horizontal, WD_ALIGN_PARAGRAPH.LEFT)
+
+
+def adjust_table_cell_alignments(table):
+    for row in table.rows:
+        for cell in row.cells:
+            set_cell_alignment(cell, vertical="center", horizontal="center")
+
+def prevent_row_split(row):
+    """Prevent a table row from splitting across pages"""
+    tr = row._tr
+    trPr = tr.get_or_add_trPr()
+    cantSplit = OxmlElement('w:cantSplit')
+    cantSplit.set(qn('w:val'), "true")
+    trPr.append(cantSplit)
 
 def convert_to_pdf(input_docx, output_pdf):
     """
@@ -647,7 +1034,8 @@ def generate_document():
                 "error": "No JSON data received"
             }), 400
 
-        outward_number = data.get('outwardNumber')
+        # outward_number = data.get('outwardNumber')
+        outward_number = '1069'
         coordinates_data = data.get('fileData')
 
         if not outward_number or not coordinates_data:
@@ -661,7 +1049,7 @@ def generate_document():
 
         # Fetch user data from API
         try:
-            user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
+            user_response = requests.get(f'http://localhost:5000/get_user/{outward_number}')
             user_response.raise_for_status()
             user_data = user_response.json()
         except requests.exceptions.RequestException as e:
@@ -672,7 +1060,7 @@ def generate_document():
             }), 500
 
         # Verify template file exists
-        template_path = "MOD 2.docx"
+        template_path = "MOD 3.docx"
         if not os.path.exists(template_path):
             return jsonify({
                 "success": False,
@@ -693,8 +1081,88 @@ def generate_document():
         try:
             name_on_certificate = user_data["user"]["nameoncertificate"]
             corresponding_Address = user_data["user"]["correspondanceadress"]
-            Survey_no = "Survey No." + user_data["user"]["gutnumber"]
-            site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
+            Survey_no = f"Survey No:" + user_data["user"]["gutnumber"]
+            site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']} Pincode :{user_data['user']['pincode']}"
+
+            # Update date in all headers - Get current date in the desired format (DD/MM/YYYY)
+            import datetime
+            from docx.enum.text import WD_ALIGN_PARAGRAPH  # Add this import
+            current_date = datetime.datetime.now().strftime("%d/%m/%Y")
+            logger.info(f"Current Date: {current_date}")  # Log the date
+            
+            # Update the date in every section's header
+            date_updated = False
+            for section in docmonarch.sections:
+                header = section.header
+                
+                # First check paragraphs in the header
+                for paragraph in header.paragraphs:
+                    text = paragraph.text
+                    logger.info(f"Header Paragraph Text: '{text}'")  # Log the text content
+                    
+                    if "Date" in text:
+                        paragraph.clear()
+                        run = paragraph.add_run(f"Date - {current_date}")
+                        run.font.name = 'Arial'
+                        run.font.size = Pt(12)
+                        run.font.bold = True
+                        logger.info(f"Updated paragraph with date: {paragraph.text}")
+                        date_updated = True
+                
+                # Check for date in header tables
+                for table in header.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                text = paragraph.text
+                                logger.info(f"Header Table Cell Text: '{text}'")
+                                
+                                if "Date" in text:
+                                    paragraph.clear()
+                                    run = paragraph.add_run(f"Date - {current_date}")
+                                    run.font.name = 'Arial'
+                                    run.font.size = Pt(12)
+                                    run.font.bold = True
+                                    logger.info(f"Updated table cell with date: {paragraph.text}")
+                                    date_updated = True
+            
+            # If no date field was found in headers, check the main document body
+            if not date_updated:
+                logger.info("No date field found in headers, checking document body")
+                for paragraph in docmonarch.paragraphs:
+                    if "Date" in paragraph.text:
+                        paragraph.clear()
+                        run = paragraph.add_run(f"Date - {current_date}")
+                        run.font.name = 'Arial'
+                        run.font.size = Pt(12)
+                        run.font.bold = True
+                        logger.info(f"Updated body paragraph with date: {paragraph.text}")
+                        date_updated = True
+                        break
+            
+            # If still no date field found, try to add it to the header
+            if not date_updated:
+                logger.info("No date field found, adding to first section header")
+                if docmonarch.sections:
+                    header = docmonarch.sections[0].header
+                    paragraph = header.add_paragraph(f"Date - {current_date}")
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+                    paragraph_format = paragraph.paragraph_format
+                    paragraph_format.right_indent = Inches(0.5)  # Right padding
+                    # paragraph_format.line_spacing = Pt(6)  # Adjust line spacing as needed
+                    # paragraph_format.space_after = Pt(10)  # Bottom margin
+                    section = docmonarch.sections[0]
+                    section.top_margin = Inches(0.5)  # Adjust the top margin of the section
+
+
+                    
+
+                    run = paragraph.runs[0]
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    # run.font.bold = True
+                    logger.info(f"Added new date field to header: {paragraph.text}")
 
             # Update paragraphs
             if len(docmonarch.paragraphs) > 6:
@@ -707,82 +1175,159 @@ def generate_document():
                 set_paragraph_format(paragraph)
 
             if len(docmonarch.paragraphs) > 8:
-                paragraph = docmonarch.paragraphs[8]
+                paragraph = docmonarch.paragraphs[9]
                 paragraph.clear()
                 run = paragraph.add_run(corresponding_Address)
                 run.font.name = 'Arial'
                 run.font.size = Pt(12)
                 run.font.bold = True
                 set_paragraph_format(paragraph)
+                paragraph.paragraph_format.left_indent = Inches(0.2)
 
             if len(docmonarch.paragraphs) > 15:
-                paragraph = docmonarch.paragraphs[7]
+                paragraph = docmonarch.paragraphs[7]  
                 paragraph.clear()
                 run = paragraph.add_run(Survey_no)
                 run.font.name = 'Arial'
                 run.font.size = Pt(12)
                 run.font.bold = True
+            
+            if len(docmonarch.paragraphs) > 15:
+                paragraph = docmonarch.paragraphs[13]  
+                paragraph.clear()
+                run = paragraph.add_run(Survey_no)
+                run.font.name = 'Arial'
+                run.font.size = Pt(12)
+                # run.font.bold = True
 
             if len(docmonarch.paragraphs) > 17:
-                paragraph = docmonarch.paragraphs[7]
+                paragraph = docmonarch.paragraphs[8]  
                 paragraph.clear()
                 run = paragraph.add_run(site_adress)
                 run.font.name = 'Arial'
                 run.font.size = Pt(12)
                 run.font.bold = True
 
+            if len(docmonarch.paragraphs) > 17:
+                paragraph = docmonarch.paragraphs[15]  
+                paragraph.clear()
+                run = paragraph.add_run(site_adress)
+                run.font.name = 'Arial'
+                run.font.size = Pt(12)
+                # run.font.bold = True
+
             # Update table with coordinates data
             if docmonarch.tables:
                 if len(docmonarch.tables) > 1:
-                    for table in docmonarch.tables[1:]:
-                        table._element.getparent().remove(table._element)
+                    # for table in docmonarch.tables[1:]:
+                    #     table._element.getparent().remove(table._element)
                 
-                table = docmonarch.tables[0]
-                row_index = 3
+                    table = docmonarch.tables[0]
+                    table1 = docmonarch.tables[1]
+                    row_index = 3
 
-                # Remove existing data rows
-                for _ in range(len(table.rows) - row_index):
-                    table._element.remove(table.rows[row_index]._element)
+                    # Remove existing data rows
+                    for _ in range(len(table.rows) - row_index):
+                        table._element.remove(table.rows[row_index]._element)
 
-                serial_number = 1
-                for entry in coordinates_data:
-                    new_row = table.add_row()
-                    new_row.cells[0].text = str(serial_number)
-    
-                    # Check that all other cells are populated correctly
-                    for i, cell in enumerate(new_row.cells):
-                        if i == 1:
-                           cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
-                        elif i == 2:
-                           cell.text = entry['latitude_dms']
-                        elif i == 3:
-                           cell.text = entry['longitude_dms']
-                        elif i == 4:
-                            cell.text = str(entry['Height'])
-                        elif i == 5 and 'distances_to_reference_points_km' in entry:
-                            cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
-                        elif i == 6 and 'distances_to_reference_points_km' in entry:
-                            cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
-                        elif i == 7 and 'boundary_distances' in entry:
-                            cell.text = (
-                               f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
-                               f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
-                            )
+                    for _ in range(len(table1.rows) - row_index):
+                        table1._element.remove(table1.rows[row_index]._element)
 
-                        # Set the font and formatting for each cell
-                        for para in cell.paragraphs:
-                            for run in para.runs:
+                    serial_number = 1
+                    for entry in coordinates_data:
+                        pattern = r"^\s*[Pp]"
+                        if re.match(pattern, entry['P_name']):
+
+                            new_row = table.add_row()
+                            prevent_row_split(new_row)
+
+                            for i, cell in enumerate(new_row.cells):
+                                for paragraph in cell.paragraphs:
+                                    paragraph._element.getparent().remove(paragraph._element)
+                                # Add new paragraph with controlled formatting
+                                paragraph = cell.add_paragraph()
+                                paragraph_format = paragraph.paragraph_format
+                                paragraph_format.space_before = Pt(0)  # Remove space before
+                                paragraph_format.space_after = Pt(0)   # Remove space after
+                                paragraph_format.line_spacing = 1.0    # Single line spacing
+
+                                
+                                if i == 0:
+                                    run = paragraph.add_run(str(serial_number))
+                                elif i == 1:
+                                    run = paragraph.add_run(f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode")
+                                elif i == 2:
+                                    run = paragraph.add_run(entry['latitude_dms'])
+                                elif i == 3:
+                                    run = paragraph.add_run(entry['longitude_dms'])
+                                elif i == 4:
+                                    run = paragraph.add_run(str(entry['Height']))
+                                elif i == 5 and 'distances_to_reference_points_km' in entry:
+                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM")
+                                elif i == 6 and 'distances_to_reference_points_km' in entry:
+                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['loh']:.2f} KM")
+                                elif i == 7 and 'boundary_distances' in entry:
+                                    run = paragraph.add_run(f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\nLohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM")
+                                
+                                # Format the run
                                 run.font.name = "Arial"
                                 run.font.size = Pt(12)
 
-                    serial_number += 1
+                        else:
+                            new_row = table1.add_row()
+                            prevent_row_split(new_row)
 
-                set_table_borders(table)
+                            for i, cell in enumerate(new_row.cells):
+                                for paragraph in cell.paragraphs:
+                                    paragraph._element.getparent().remove(paragraph._element)
+                                # Add new paragraph with controlled formatting
+                                paragraph = cell.add_paragraph()
+                                paragraph_format = paragraph.paragraph_format
+                                paragraph_format.space_before = Pt(0)  # Remove space before
+                                paragraph_format.space_after = Pt(0)   # Remove space after
+                                paragraph_format.line_spacing = 1.0    # Single line spacing
+
+                                
+                                if i == 0:
+                                    run = paragraph.add_run(str(serial_number))
+                                elif i == 1:
+                                    run = paragraph.add_run(f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode")
+                                elif i == 2:
+                                    run = paragraph.add_run(entry['latitude_dms'])
+                                elif i == 3:
+                                    run = paragraph.add_run(entry['longitude_dms'])
+                                elif i == 4:
+                                    run = paragraph.add_run(str(entry['Height']))
+                                elif i == 5 and 'distances_to_reference_points_km' in entry:
+                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM")
+                                elif i == 6 and 'distances_to_reference_points_km' in entry:
+                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['loh']:.2f} KM")
+                                elif i == 7 and 'boundary_distances' in entry:
+                                    run = paragraph.add_run(f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\nLohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM")
+                                
+                                # Format the run
+                                run.font.name = "Arial"
+                                run.font.size = Pt(12)
+                        
+                        # Set the font and formatting for each cell
+                        for cell in new_row.cells:
+                            set_cell_alignment(cell, vertical="center", horizontal="center")  # Center both vertically and horizontally
+
+                        serial_number += 1
+
+                    set_table_borders(table)
+                    set_table_borders(table1)
+                    adjust_table_cell_alignments(table)
+                    adjust_table_cell_alignments(table1)
+                
 
             # Save document
             output_docx = 'modified_output.docx'
             output_pdf = 'modified_output.pdf'
             docmonarch.save(output_docx)     
+            
+            
+            docmonarch = None  # Release the document
             
             # Convert to PDF using platform-specific method
             if convert_to_pdf(output_docx, output_pdf):
@@ -814,6 +1359,9 @@ def generate_document():
             "success": False,
             "error": f"Unexpected error: {str(e)}"
         }), 500
+
+
+
 
 @app.route('/get-doc')
 def get_document():
@@ -871,235 +1419,6 @@ if __name__ == '__main__':
 
 
 
-
-
-
-
-# logging.basicConfig(level=logging.DEBUG)
-# logger = logging.getLogger(__name__)
-
-# def set_table_borders(table):
-#     tbl = table._element
-#     tbl_pr = tbl.find(qn("w:tblPr"))
-#     if tbl_pr is None:
-#         tbl_pr = OxmlElement("w:tblPr")
-#         tbl.insert(0, tbl_pr)
-
-#     tbl_borders = OxmlElement("w:tblBorders")
-#     for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
-#         border = OxmlElement(f"w:{border_name}")
-#         border.set(qn("w:val"), "single")
-#         border.set(qn("w:sz"), "5")
-#         border.set(qn("w:space"), "0")
-#         border.set(qn("w:color"), "000000")
-#         tbl_borders.append(border)
-#     tbl_pr.append(tbl_borders)
-
-# def set_paragraph_format(paragraph):
-#     paragraph_format = paragraph.paragraph_format
-#     paragraph_format.line_spacing = 1.5
-#     paragraph_format.space_after = Pt(6)
-#     paragraph_format.space_before = Pt(6)
-
-# @app.route('/generate_doc', methods=['POST'])
-# def generate_document():
-#     try:
-#         # Initialize COM for this thread
-#         # pythoncom.CoInitialize()
-        
-#         try:
-#             # Validate request data
-#             if not request.is_json:
-#                 return jsonify({
-#                     "success": False,
-#                     "error": "Request must be JSON"
-#                 }), 400
-
-#             # Get outward number and file data from request
-#             data = request.json
-#             if not data:
-#                 return jsonify({
-#                     "success": False,
-#                     "error": "No JSON data received"
-#                 }), 400
-
-#             outward_number = data.get('outwardNumber')
-#             coordinates_data = data.get('fileData')
-
-#             if not outward_number or not coordinates_data:
-#                 return jsonify({
-#                     "success": False,
-#                     "error": "Missing required fields: outwardNumber or fileData"
-#                 }), 400
-
-#             logger.info(f"Processing outward number: {outward_number}")
-#             logger.info(f"Coordinates data: {coordinates_data}")
-
-#             # Fetch user data from API
-#             try:
-#                 user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
-#                 user_response.raise_for_status()
-#                 user_data = user_response.json()
-#             except requests.exceptions.RequestException as e:
-#                 logger.error(f"Error fetching user data: {str(e)}")
-#                 return jsonify({
-#                     "success": False,
-#                     "error": f"Failed to fetch user data: {str(e)}"
-#                 }), 500
-
-#             # Verify template file exists
-#             template_path = "MOD 2.docx"
-#             if not os.path.exists(template_path):
-#                 return jsonify({
-#                     "success": False,
-#                     "error": "Template file not found"
-#                 }), 500
-
-#             # Create document
-#             try:
-#                 docmonarch = Document(template_path)
-#             except Exception as e:
-#                 logger.error(f"Error creating document: {str(e)}")
-#                 return jsonify({
-#                     "success": False,
-#                     "error": f"Failed to create document: {str(e)}"
-#                 }), 500
-
-#             # Update user information
-#             try:
-#                 name_on_certificate = user_data["user"]["nameoncertificate"]
-#                 corresponding_Address = user_data["user"]["correspondanceadress"]
-#                 Survey_no = "Survey No." + user_data["user"]["gutnumber"]
-#                 site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']}"
-
-#                 # Update paragraphs
-#                 if len(docmonarch.paragraphs) > 6:
-#                     paragraph = docmonarch.paragraphs[6]
-#                     paragraph.clear()
-#                     run = paragraph.add_run(name_on_certificate)
-#                     run.font.name = 'Arial'
-#                     run.font.size = Pt(12)
-#                     run.font.bold = True
-#                     set_paragraph_format(paragraph)
-
-#                 if len(docmonarch.paragraphs) > 8:
-#                     paragraph = docmonarch.paragraphs[8]
-#                     paragraph.clear()
-#                     run = paragraph.add_run(corresponding_Address)
-#                     run.font.name = 'Arial'
-#                     run.font.size = Pt(12)
-#                     run.font.bold = True
-#                     set_paragraph_format(paragraph)
-
-#                 if len(docmonarch.paragraphs) > 15:
-#                     paragraph = docmonarch.paragraphs[7]
-#                     paragraph.clear()
-#                     run = paragraph.add_run(Survey_no)
-#                     run.font.name = 'Arial'
-#                     run.font.size = Pt(12)
-#                     run.font.bold = True
-
-#                 if len(docmonarch.paragraphs) > 17:
-#                     paragraph = docmonarch.paragraphs[7]
-#                     paragraph.clear()
-#                     run = paragraph.add_run(site_adress)
-#                     run.font.name = 'Arial'
-#                     run.font.size = Pt(12)
-#                     run.font.bold = True
-
-#                 # Update table with coordinates data
-#                 if docmonarch.tables:
-#                     if len(docmonarch.tables) > 1:
-#                         for table in docmonarch.tables[1:]:
-#                             table._element.getparent().remove(table._element)
-                    
-#                     table = docmonarch.tables[0]
-#                     row_index = 3
-
-#                     # Remove existing data rows
-#                     for _ in range(len(table.rows) - row_index):
-#                         table._element.remove(table.rows[row_index]._element)
-
-#                     serial_number = 1
-#                     for entry in coordinates_data:
-#                         new_row = table.add_row()
-#                         new_row.cells[0].text = str(serial_number)
-        
-#                         # Check that all other cells are populated correctly
-#                         for i, cell in enumerate(new_row.cells):
-#                             if i == 1:
-#                                cell.text = f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode"
-#                             elif i == 2:
-#                                cell.text = entry['latitude_dms']
-#                             elif i == 3:
-#                                cell.text = entry['longitude_dms']
-#                             elif i == 4:
-#                                 cell.text = str(entry['Height'])
-#                             elif i == 5 and 'distances_to_reference_points_km' in entry:
-#                                 cell.text = f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM"
-#                             elif i == 6 and 'distances_to_reference_points_km' in entry:
-#                                 cell.text = f"{entry['distances_to_reference_points_km']['loh']:.2f} KM"
-#                             elif i == 7 and 'boundary_distances' in entry:
-#                                 cell.text = (
-#                                    f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\n"
-#                                    f"Lohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
-#                                 )
-
-#                             # Set the font and formatting for each cell
-#                             for para in cell.paragraphs:
-#                                 for run in para.runs:
-#                                     run.font.name = "Arial"
-#                                     run.font.size = Pt(12)
-
-#                         serial_number += 1
-
-#                     set_table_borders(table)
-
-#                 # Save document
-#                 output_docx = 'modified_output.docx'
-#                 output_pdf = 'modified_output.pdf'
-#                 docmonarch.save(output_docx)
-                
-#                 # Convert to PDF using docx2pdf
-#                 try:
-#                     # Convert DOCX to PDF                  # convert(output_docx, output_pdf)
-#                     convert(output_docx, output_pdf)
-
-#                     if not os.path.exists(output_pdf):
-#                         raise Exception("PDF file was not created")
-
-#                     return jsonify({
-#                         "success": True,
-#                         "message": "Document generated successfully",
-#                         "docPath": os.path.abspath(output_docx),
-#                         "pdfPath": os.path.abspath(output_pdf)
-#                     })
-
-#                 except Exception as e:
-#                     logger.error(f"Error converting to PDF: {str(e)}")
-#                     return jsonify({
-#                         "success": False,
-#                         "error": f"Error converting to PDF: {str(e)}"
-#                     }), 500
-
-#             except Exception as e:
-#                 logger.error(f"Error during document generation: {str(e)}")
-#                 return jsonify({
-#                     "success": False,
-#                     "error": f"Error during document generation: {str(e)}"
-#                 }), 500
-
-#         finally:
-#             # Always uninitialize COM, even if an error occurred
-#             # pythoncom.CoUninitialize()
-#             pass
-
-#     except Exception as e:
-#         logger.error(f"Unexpected error: {str(e)}")
-#         return jsonify({
-#             "success": False,
-#             "error": f"Unexpected error: {str(e)}"
-#         }), 500
 
 
 
