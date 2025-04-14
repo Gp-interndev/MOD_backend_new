@@ -213,3 +213,109 @@ if __name__ == '__main__':
 
 #     else:
 #         return jsonify({"error": "No file or invalid file format."}), 400
+
+
+
+
+
+#------------------------csv file number dynamic code--------------
+# if job_number:
+#                 logger.info(f"Attempting to replace header number with job number: {job_number}")
+                
+#                 # Process all sections of the document
+        
+#             for section_idx, section in enumerate(docmonarch.sections):
+#                 logger.info(f"Processing section {section_idx+1}")
+#                 header = section.header
+                
+#                 # Log all header paragraphs to see what's there
+#                 for para_idx, para in enumerate(header.paragraphs):
+#                     logger.info(f"[Section {section_idx+1}] Header Paragraph {para_idx+1}: '{para.text}'")
+                
+                
+#                 header_text_modified = False
+                
+#                 # Loop through all paragraphs in the header
+#                 for para_idx, paragraph in enumerate(header.paragraphs):
+                    
+#                     if "MONARCH/PMC" in paragraph.text:
+#                         logger.info(f"Found MONARCH/PMC in paragraph: '{paragraph.text}'")
+                        
+#                         # First try a more precise pattern to match the exact format
+#                         pattern = r'(MONARCH/PMC-AAI/AN_)(\d+)'
+#                         if re.search(pattern, paragraph.text):
+#                             original_text = paragraph.text
+#                             modified_text = re.sub(pattern, r'\g<1>' + job_number, paragraph.text)
+#                             logger.info(f"Replacing '{original_text}' with '{modified_text}'")
+                            
+#                             # Replace text in the paragraph while preserving formatting
+#                             paragraph.clear()
+#                             new_run = paragraph.add_run(modified_text)
+                            
+#                             # Set font formatting
+#                             new_run.font.name = 'Arial'
+#                             new_run.font.size = Pt(12)
+#                             new_run.font.bold = True
+                            
+#                             header_text_modified = True
+#                             logger.info(f"Successfully replaced header text in section {section_idx+1}")
+                        
+#                         # If the exact pattern isn't found, try to find any number after MONARCH/PMC
+#                         elif not header_text_modified:
+#                             # Look for text containing "MONARCH/PMC" followed by any digits
+#                             pattern = r'(MONARCH/PMC.*?)(\d+)'
+#                             if re.search(pattern, paragraph.text):
+#                                 original_text = paragraph.text
+#                                 modified_text = re.sub(pattern, lambda m: m.group(1) + job_number, paragraph.text)
+#                                 logger.info(f"Replacing '{original_text}' with '{modified_text}'")
+                                
+#                                 # Replace text in the paragraph
+#                                 paragraph.clear()
+#                                 new_run = paragraph.add_run(modified_text)
+                                
+#                                 # Set font formatting
+#                                 new_run.font.name = 'Arial'
+#                                 new_run.font.size = Pt(12)
+#                                 new_run.font.bold = True
+                                
+#                                 header_text_modified = True
+#                                 logger.info(f"Successfully replaced header text in section {section_idx+1}")
+                
+#                 # Only if no matching text was found in any paragraph, add a new one
+#                 if not header_text_modified and job_number:
+#                     # Before adding, check if there's any paragraph with similar text but different format
+#                     for para_idx, paragraph in enumerate(header.paragraphs):
+#                         if "MONARCH" in paragraph.text and "PMC" in paragraph.text:
+#                             # We found a similar paragraph - modify it instead of adding new
+#                             logger.info(f"Found similar header text: '{paragraph.text}'")
+#                             original_text = paragraph.text
+                            
+#                             # Replace or append the job number
+#                             if re.search(r'\d+', paragraph.text):
+#                                 # Replace existing number
+#                                 modified_text = re.sub(r'(\d+)', job_number, paragraph.text)
+#                             else:
+#                                 # Append the job number if no number exists
+#                                 modified_text = f"{paragraph.text.strip()} AAI/AN_{job_number}"
+                            
+#                             logger.info(f"Modifying similar text from '{original_text}' to '{modified_text}'")
+                            
+#                             # Replace text
+#                             paragraph.clear()
+#                             new_run = paragraph.add_run(modified_text)
+#                             new_run.font.name = 'Arial'
+#                             new_run.font.size = Pt(12)
+#                             new_run.font.bold = True
+                            
+#                             header_text_modified = True
+#                             break
+                    
+#                     # If still not modified, add new paragraph as last resort
+#                     if not header_text_modified:
+#                         logger.info("No matching header found, adding a new header paragraph")
+#                         new_header_para = header.add_paragraph(f"MONARCH/PMC-AAI/AN_{job_number}")
+#                         run = new_header_para.runs[0]
+#                         run.font.name = 'Arial'
+#                         run.font.size = Pt(12)
+#                         run.font.bold = True
+#                         logger.info(f"Added new header with job number {job_number}")

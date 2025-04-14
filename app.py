@@ -1,3 +1,4 @@
+#---------------updated-------------------
 from flask import Flask, request, jsonify, render_template, send_file
 import psycopg2
 from datetime import datetime
@@ -21,14 +22,16 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import requests
 import os
-# import comtypes.client
 import logging
-# import pythoncom  
-# import pypandoc
 from docx2pdf import convert
 import platform
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-# import geopandas as gpd
+from docx.enum.text import WD_BREAK
+import base64
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.shared import RGBColor
+import subprocess
+
 
 
 
@@ -58,6 +61,12 @@ def get_db_connection():
 # DB_PASSWORD = "Mojani@992101"
 # DB_HOST = "info.dpzoning.com"  #info.dpzoning.com
 # DB_PORT = "5432"  
+
+# DB_HOST = "103.167.184.133"
+# DB_NAME = "MOD"
+# DB_USER = "postgres"
+# DB_PASS = "geopulse123"
+# DB_PORT = "5435" 
 
 
 
@@ -116,8 +125,8 @@ def save_user():
         nameoncertificate = data.get("nameoncertificate")
         gstnumber = data.get("gstnumber") if data.get("gstnumber") else None
         pannumber = data.get("pannumber") if data.get("pannumber") else None
-        # siteadress = data.get("siteadress")
-        gutnumber = data.get("gutnumber") 
+        siteaddress = data.get("siteaddress")
+        gutnumber = data.get("gutnumber") if data.get("gutnumber") else None 
         district = data.get("district")
         taluka = data.get("taluka")
         village = data.get("village")
@@ -126,7 +135,7 @@ def save_user():
         # outwardnumber = data.get("outwardnumber")
         date = datetime.now()  # Store current timestamp
 
-        if not all([name, nameoncertificate, gutnumber, district, taluka, village]):
+        if not all([name, nameoncertificate, district, taluka, village]):
             return jsonify({"error": "Missing required fields"}), 400
 
         conn = get_db_connection()
@@ -136,13 +145,13 @@ def save_user():
         insert_query = """
         INSERT INTO public.userdata 
         (name, mobilenumber, nameoncertificate, gstnumber, pannumber, gutnumber, 
-         district, taluka, village, pincode, correspondanceadress,  date) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+         district, taluka, village, pincode, correspondanceadress, date, siteaddress) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
         RETURNING outwardnumber
         """
         cursor.execute(insert_query, (name, mobilenumber, nameoncertificate, gstnumber, pannumber, 
                                        gutnumber, district, taluka, village, pincode, 
-                                      correspondanceadress,  date))
+                                      correspondanceadress, date, siteaddress))
 
         outwardnumber = cursor.fetchone()[0]
         conn.commit()
@@ -228,188 +237,6 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 
-def map_sattelite(coords, points_with_labels,nearest_points_list, output_map="static/map.html"):
-    """
-    Create a folium map with a polygon, labeled points, and an export-to-PDF button on Google Satellite imagery.
-    
-    Args:
-        coords (list): List of (latitude, longitude) tuples for the polygon.
-        points_with_labels (list): List of tuples [(lat, lon, label), ...] for points with labels.
-        output_map (str): Path to save the output HTML map.
-    
-    Returns:
-        str: Path to the saved HTML map.
-    """
-    swapped_coords = [(lat,lon) for lon, lat  in coords]
-    m = folium.Map(
-        # location=[coords[0][0], coords[0][1]],
-        location = swapped_coords[0],
-        zoom_start=10,
-        tiles=None  # Disable default tiles
-    )
-    m.add_child(MeasureControl())
-
-    folium.TileLayer(
-        tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attr="OpenStreetMap",
-        name="OpenStreetMap",
-        overlay=False,
-        control=True  # Allow users to toggle this layer
-    ).add_to(m)
-    
-    # Add Google Satellite Tiles
-    folium.TileLayer(
-        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-        attr="Google Satellite",
-        name="Google Satellite",
-        overlay=False,
-        control=True
-    ).add_to(m) 
-    
-    polygon = folium.Polygon(
-        locations=swapped_coords,  # List of (latitude, longitude) tuples
-        color="red",
-        weight=3,
-        fill=True,
-        fill_color="cyan",
-        fill_opacity=0.4,
-        popup="Polygon Area"
-    ).add_to(m)
-
-    Aviation_boundary = folium.WmsTileLayer(
-        url="https://iwmsgis.pmc.gov.in/geoserver/wms?",
-        name="Aviation Boundaries",
-        layers="MOD:Aviation_Boundary",
-        fmt="image/png",
-        transparent=True,
-        overlay=True,
-        control=True
-    ).add_to(m)
-
-    
-    Aviation_zone =folium.WmsTileLayer(
-        url="https://iwmsgis.pmc.gov.in/geoserver/wms?",
-        name="Aviation Zone",
-        layers="MOD:Aviation_data",
-        fmt="image/png",
-        transparent=True,
-        overlay=True,
-        opacity = 0.5,
-        control=True
-    ).add_to(m)
-
-   
-    for point_pair in nearest_points_list:
-    # Each point_pair is a tuple of two points
-        point1 = point_pair[0]  
-        point2 = point_pair[1] 
-
-        # Calculate the distance between the two points using geodesic (this calculates the great-circle distance)
-        line_length = geodesic(point1, point2).kilometers  # Distance in kilometers
-
-        mid_point_lat = (point1[0] + point2[0]) / 2
-        mid_point_lon = (point1[1] + point2[1]) / 2
-        popup_message = f"Distance: {line_length:.2f} km"  # Format the distance to two decimal places
-
-        # Add the PolyLine to the map with the popup showing the distance
-        folium.PolyLine(
-            locations=[point1, point2],  # Coordinates of the points to draw a line between
-            color="yellow",  # Color for the line
-            weight=1,  # Line thickness
-        ).add_to(m).add_child(folium.Popup(popup_message))
-
-        folium.Marker(
-        location=[mid_point_lat, mid_point_lon],  # Midpoint of the line
-        icon=folium.DivIcon(
-            icon_size=(150, 36),  # Size of the label
-            icon_anchor=(7, 20),  # Position of the label
-            html=f'<div style="font-size: 16px; font-weight: bold; color: yellow;">{line_length:.2f} km</div>'  # Label style
-        ),
-    ).add_to(m)
-
-
-    for lat, lon, label in points_with_labels:
-        folium.CircleMarker(
-            location=(lat, lon),
-            radius=3,  # Small dot size
-            color="blue",
-            fill=True,
-            fill_color="blue",
-            fill_opacity=0.5,
-            popup=f"{label}",  # Add label as a popup
-        ).add_to(m)
-
-        folium.Marker(
-        location=[lat, lon], 
-        icon=folium.DivIcon(
-            icon_size=(150, 36),  # Size of the label
-            icon_anchor=(7, 20),  # Position of the label
-            html=f'<div style="font-size: 12px; font-weight: bold; color: yellow;">{label}</div>'  # Label style
-        ),
-    ).add_to(m)
-
-    m.fit_bounds(polygon.get_bounds()) 
-    # Add a custom button to export to PDF
-    pdf_button = """
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-                <div style="position: fixed; 
-                            bottom: 50px; left: 50px; width: 150px; height: 30px; 
-                            z-index: 1000;">
-                    <button onclick="exportToPDF()" style="width: 150px; height: 30px; background-color: #4CAF50; color: white; border: none; border-radius: 5px;">
-                        Export to PDF
-                    </button>
-                </div>
-            
-                <script>
-                function exportToPDF() {
-    try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-
-        // Select the map container dynamically
-        const mapContainer = document.querySelector('.folium-map');
-
-        const originalScrollX = window.scrollX;
-        const originalScrollY = window.scrollY;
-
-        html2canvas(mapContainer, {
-            scale: 2, // Scale for high resolution
-            useCORS: true, // Handle cross-origin images
-            scrollX: originalScrollX, // Maintain original horizontal scroll position
-            scrollY: originalScrollY, // Maintain original vertical scroll position
-        }).then(function (canvas) {
-            const imgData = canvas.toDataURL('image/png');
-            const pdfWidth = 180; // Maximum width for PDF
-            const aspectRatio = canvas.width / canvas.height;
-            const imgHeight = pdfWidth / aspectRatio; // Maintain aspect ratio
-
-            // Center the map image in the PDF
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const centerX = (pageWidth - pdfWidth) / 2;
-
-            // Add the image to the PDF
-            doc.addImage(imgData, 'PNG', centerX, 10, pdfWidth, imgHeight);
-
-            // Save the generated PDF
-            const fileName = `map_export.pdf`;
-            doc.save(fileName);
-        });
-    } catch (error) {
-        console.error('Error generating PDF:', error);
-        alert('Failed to generate PDF. Check console for details.');
-    }
-}
-
-
-    </script>
-    """
-    m.get_root().html.add_child(folium.Element(pdf_button))
-
-    folium.LayerControl().add_to(m)
-    m.save(output_map)
-    return output_map
-
 def convert_to_wgs84(x, y):
     lon, lat = transform(utm_proj, wgs84_proj, x, y)
     return lat, lon
@@ -464,11 +291,6 @@ def calculate_boundaryDistance(coords):
     return mindistance,nearest_points_list
 
 # Route to handle CSV file upload and processing
-
-
-
-
-
 
 ALLOWED_EXTENSIONS = {'csv'}
 
@@ -558,7 +380,7 @@ def process_csv():
                 "LohgaonBoundaryMinDistance": float(boundary_distances["LohgaonBoundaryMinDistance"])
             }
             print(fpoints, fpointswithlabel, nearest_points_list)
-            map_sattelite(fpoints, fpointswithlabel, nearest_points_list)
+            # map_sattelite(fpoints, fpointswithlabel, nearest_points_list)
 
             result = {
                 "decimal_degrees": decimal_degrees,
@@ -578,13 +400,12 @@ def process_csv():
     return jsonify({"error": "Invalid file format. Only CSV files are allowed."}), 400
 
 
-
+# for save the coordinates and user details in database in mod and points  table
 
 @app.route('/update_csv', methods=['POST'])
 def update_csv():
     # Get outward number from the form data
     outwardnumber = request.form.get('outwardNumber')
-    # outwardnumber = '1069'
     if not outwardnumber:
         return jsonify({"error": "Outward number is required"}), 400
     
@@ -687,8 +508,19 @@ def update_csv():
                         user_name, district, taluka, village, date, address, gut, z))
 
                 # Insert the building polygon into the `mod` table
-                cur.execute("INSERT INTO mod (geom, outward, typeofsite) VALUES (ST_GeomFromText(%s, 32643), %s, %s);", 
-                            (building_polygon_wkt, outwardnumber, "building"))
+                    cur.execute("""
+                        INSERT INTO mod (
+                            geom, pointname, outward, typeofsite, "Distance_from_NDA", "Distance_from_lohgaon",
+                            name, districtname, talukaname, villagename, date, address, gut, "Height_AMSL"
+                        )
+                        VALUES (
+                            ST_GeomFromText(%s, 32643), %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s
+                        );
+                    """, (
+                        building_polygon_wkt, name, outwardnumber, "building", nda_dist, loh_dist,
+                        user_name, district, taluka, village, date, address, gut, z
+                    ))
 
             # Insert plot coordinates 
             if plotCoordiantes:
@@ -702,14 +534,23 @@ def update_csv():
                     """, (name, point_wkt, outwardnumber, "plot", nda_dist, loh_dist,
                         user_name, district, taluka, village, date, address, gut, z))
 
-                # Insert the plot polygon into the `mod` table
-                cur.execute("INSERT INTO mod (geom, outward, typeofsite) VALUES (ST_GeomFromText(%s, 32643), %s, %s);", 
-                            (plot_polygon_wkt, outwardnumber, "plot"))
+                    cur.execute("""
+                        INSERT INTO mod (
+                            geom, pointname, outward, typeofsite, "Distance_from_NDA", "Distance_from_lohgaon",
+                            name, districtname, talukaname, villagename, date, address, gut, "Height_AMSL"
+                        )
+                        VALUES (
+                            ST_GeomFromText(%s, 32643), %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s
+                        );
+                    """, (
+                        plot_polygon_wkt, name, outwardnumber, "plot", nda_dist, loh_dist,
+                        user_name, district, taluka, village, date, address, gut, z
+                    ))
 
            
             conn.commit()
 
-            
             cur.close()
             conn.close()
 
@@ -730,6 +571,8 @@ def update_csv():
         return jsonify({"error": "No file or invalid file format."}), 400
 
 
+
+
 @app.route('/get_aviation_data/<string:outwardnumber>', methods=['GET'])
 def get_aviation_data_and_geometry(outwardnumber):
     try:
@@ -741,7 +584,6 @@ def get_aviation_data_and_geometry(outwardnumber):
             SELECT geom FROM mod 
             WHERE outward = %s
             ORDER BY id DESC
-            LIMIT 1;
         """, (outwardnumber,))
 
         result = cur.fetchone()
@@ -756,39 +598,22 @@ def get_aviation_data_and_geometry(outwardnumber):
             SELECT zone, elevation
             FROM "Aviation_data"
             WHERE ST_Intersects(geom, ST_Transform(ST_SetSRID(%s::geometry, 32643), 4326))
-            LIMIT 1;
         """, (geometry,))
 
-        aviation_data = cur.fetchone()
-
+        aviation_data = cur.fetchall() 
+    
+        # Convert list of tuples to list of dictionaries
+        aviation_data_list = [{"zone": row[0], "elevation": row[1]} for row in aviation_data] 
+        print(aviation_data, aviation_data_list)
         # Add debug logging
-        if aviation_data:
-            print(f"Found aviation data: {aviation_data}")
-        else:
-            print(f"No aviation data found that intersects with this geometry")
-            
-            # Additional debugging query to check if Aviation_data table has any records
-            cur.execute("SELECT COUNT(*) FROM Aviation_data")
-            count = cur.fetchone()[0]
-            print(f"Total records in Aviation_data: {count}")
+        print(f"Found aviation data: {aviation_data_list}")
 
         cur.close()
         conn.close()
 
-        if not aviation_data:
-            return jsonify({
-                "geometry": geometry,
-                "aviation_data": None,
-                "message": "No aviation data found for this location"
-            }), 200
-
-        # Return both geometry and aviation data
         return jsonify({
             "geometry": geometry,
-            "aviation_data": {
-                "zone": aviation_data[0],
-                "elevation": aviation_data[1]
-            }
+            "aviation_data": aviation_data_list  
         }), 200
 
     except Exception as e:
@@ -796,83 +621,6 @@ def get_aviation_data_and_geometry(outwardnumber):
         print(f"Error in get_aviation_data_and_geometry: {e}")
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
-
-
-
-# @app.route('/get_aviation_data/<string:outwardnumber>', methods=['GET'])
-# def get_aviation_data(outwardnumber):
-#     try:
-#         print(f"Fetching aviation data for outward number: {outwardnumber}")
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-
-#         # Get plot geometry for the given outward number
-#         cur.execute("""
-#             SELECT geom FROM mod 
-#             WHERE outward = %s AND typeofsite = 'plot'
-#         """, (outwardnumber,))
-        
-#         plot_geoms = cur.fetchall()  # Fetch all plots for the outward number
-
-#         # Get building geometry for the given outward number
-#         cur.execute("""
-#             SELECT geom FROM mod 
-#             WHERE outward = %s AND typeofsite = 'building'
-#         """, (outwardnumber,))
-        
-#         building_geoms = cur.fetchall()  # Fetch all buildings for the outward number
-
-#         if not plot_geoms and not building_geoms:
-#             print(f"No plot or building geometry found for outward number: {outwardnumber}")
-#             return jsonify({"error": "No plot or building geometry found for this outward number"}), 404
-
-#         # Combine both plot and building geometries (if necessary)
-#         all_geoms = plot_geoms + building_geoms
-        
-#         print(f"Found {len(all_geoms)} geometries for outward number: {outwardnumber}")
-
-#         # Query aviation data that intersects with any of the geometries (plot or building)
-#         aviation_data = None
-#         for geom in all_geoms:
-#             cur.execute("""
-#                 SELECT zone, elevation
-#                 FROM "Aviation_data"
-#                 WHERE ST_Intersects(geom, ST_Transform(ST_SetSRID(%s::geometry, 32643), 4326))
-#                 LIMIT 1;
-#             """, (geom[0],))
-            
-#             aviation_data = cur.fetchone()
-#             if aviation_data:
-#                 break  # Exit the loop once aviation data is found
-        
-#         # Add debug logging
-#         if aviation_data:
-#             print(f"Found aviation data: {aviation_data}")
-#         else:
-#             print(f"No aviation data found that intersects with this plot/building")
-
-#             # Additional debugging query to check if Aviation_data table has any records
-#             cur.execute("SELECT COUNT(*) FROM Aviation_data")
-#             count = cur.fetchone()[0]
-#             print(f"Total records in Aviation_data: {count}")
-        
-#         cur.close()
-#         conn.close()
-        
-#         if not aviation_data:
-#             return jsonify({"error": "No aviation data found for this location"}), 404
-        
-#         # Return the actual aviation data
-#         return jsonify({
-#             "zone": aviation_data[0],
-#             "elevation": aviation_data[1]
-#         }), 200
-        
-#     except Exception as e:
-#         import traceback
-#         print(f"Error in get_aviation_data: {e}")
-#         print(traceback.format_exc())
-#         return jsonify({"error": str(e)}), 500
 
 
 
@@ -917,40 +665,54 @@ def set_paragraph_format(paragraph):
     paragraph_format.space_after = Pt(6)  # Space after paragraph
     paragraph_format.space_before = Pt(6)  # Space before paragraph
 
-def set_cell_alignment(cell, vertical="center", horizontal="center"):
+def set_cell_alignment(cell, vertical="center", horizontal="center", is_second_column=False):
     """
-    Set both vertical and horizontal alignment of the cell.
-    vertical can be "top", "center", or "bottom".
-    horizontal can be "left", "center", or "right".
+    Set cell alignment with special handling for second column
+    vertical: "top", "center", or "bottom"
+    horizontal: "left", "center", or "right"
+    is_second_column: True if this is the second column (will be left-aligned)
     """
-    # Get the cell's XML element
-    tc = cell._element
-    
-    # Ensure the cell has a <w:tcPr> element
-    tc_pr = tc.find(qn("w:tcPr"))
-    if tc_pr is None:
-        tc_pr = OxmlElement("w:tcPr")
-        tc.insert(0, tc_pr)
-    
-    # Create <w:vAlign> element and set vertical alignment
-    v_align = OxmlElement("w:vAlign")
-    v_align.set(qn("w:val"), vertical)
-    tc_pr.append(v_align)
+    try:
+        # Get the cell's XML element
+        tc = cell._element
+        
+        # Ensure the cell has a <w:tcPr> element
+        tc_pr = tc.find(qn("w:tcPr"))
+        if tc_pr is None:
+            tc_pr = OxmlElement("w:tcPr")
+            tc.insert(0, tc_pr)
+        
+        # Vertical alignment (applies to all cells)
+        v_align = OxmlElement("w:vAlign")
+        v_align.set(qn("w:val"), vertical)
+        tc_pr.append(v_align)
 
-    # Set horizontal alignment
-    for paragraph in cell.paragraphs:
-        paragraph.alignment = {
+        # Horizontal alignment - special handling for second column
+        align = WD_ALIGN_PARAGRAPH.LEFT if is_second_column else {
             "left": WD_ALIGN_PARAGRAPH.LEFT,
             "center": WD_ALIGN_PARAGRAPH.CENTER,
             "right": WD_ALIGN_PARAGRAPH.RIGHT,
-        }.get(horizontal, WD_ALIGN_PARAGRAPH.LEFT)
+        }.get(horizontal, WD_ALIGN_PARAGRAPH.CENTER)
+
+        for paragraph in cell.paragraphs:
+            paragraph.alignment = align
+            
+    except Exception as e:
+        print(f"Warning: Could not set cell alignment: {e}")
 
 
 def adjust_table_cell_alignments(table):
-    for row in table.rows:
-        for cell in row.cells:
-            set_cell_alignment(cell, vertical="center", horizontal="center")
-
+    try:
+        for row in table.rows:
+            for i, cell in enumerate(row.cells):
+                # Second column (index 1) gets left alignment, others get center
+                set_cell_alignment(cell, 
+                                 vertical="center",
+                                 horizontal="center",
+                                 is_second_column=(i == 1))
+    except Exception as e:
+        print(f"Warning: Could not adjust table alignments: {e}")
+        
 def prevent_row_split(row):
     """Prevent a table row from splitting across pages"""
     tr = row._tr
@@ -959,62 +721,9 @@ def prevent_row_split(row):
     cantSplit.set(qn('w:val'), "true")
     trPr.append(cantSplit)
 
-def convert_to_pdf(input_docx, output_pdf):
-    """
-    Convert DOCX to PDF using `docx2pdf` on Windows and LibreOffice on Linux.
-    """
-    system = platform.system()
 
-    if system == "Windows":
-        try:
-            import pythoncom
-            from docx2pdf import convert
-            
-            pythoncom.CoInitialize()  # Initialize COM for Windows
-            convert(input_docx, output_pdf)
-            pythoncom.CoUninitialize()  # Clean up COM
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error using docx2pdf on Windows: {str(e)}")
-            return False
 
-    else:  # Linux/macOS
-        try:
-            # Find the correct LibreOffice binary
-            libreoffice_commands = ["libreoffice", "soffice"]
-            command = next((cmd for cmd in libreoffice_commands if subprocess.run([cmd, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False).returncode == 0), None)
-            
-            if not command:
-                logger.error("Neither LibreOffice nor soffice found. Please install LibreOffice.")
-                return False
-
-            output_dir = os.path.dirname(output_pdf) or "."
-
-            process = subprocess.run(
-                [command, "--headless", "--convert-to", "pdf", "--outdir", output_dir, input_docx],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False
-            )
-
-            if process.returncode != 0:
-                logger.error(f"Error converting with LibreOffice: {process.stderr.decode()}")
-                return False
-
-            # Rename output file if necessary
-            input_basename = os.path.splitext(os.path.basename(input_docx))[0]
-            libreoffice_output = os.path.join(output_dir, f"{input_basename}.pdf")
-
-            if libreoffice_output != output_pdf:
-                os.rename(libreoffice_output, output_pdf)
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error converting to PDF on Linux/Mac: {str(e)}")
-            return False
-
+# Pdf Document generation code 
 
 @app.route('/generate_doc', methods=['POST'])
 def generate_document():
@@ -1037,6 +746,12 @@ def generate_document():
         outward_number = data.get('outwardNumber')
         # outward_number = '1069'
         coordinates_data = data.get('fileData')
+        job_number = data.get('jobNumber', '') 
+        # map_screenshots = data.get('mapScreenshots', {})
+
+        logger.info(f"Received job number: {job_number}")
+        logger.info(f"Job number type: {type(job_number)}")
+        
 
         if not outward_number or not coordinates_data:
             return jsonify({
@@ -1045,11 +760,14 @@ def generate_document():
             }), 400
 
         logger.info(f"Processing outward number: {outward_number}")
+       
         logger.info(f"Coordinates data: {coordinates_data}")
+        
+        # logger.info(f"Received map screenshots: {True if map_screenshots else False}")
 
         # Fetch user data from API
         try:
-            user_response = requests.get(f'http://localhost:5000/get_user/{outward_number}')
+            user_response = requests.get(f'http://127.0.0.1:5000/get_user/{outward_number}')
             user_response.raise_for_status()
             user_data = user_response.json()
         except requests.exceptions.RequestException as e:
@@ -1070,6 +788,42 @@ def generate_document():
         # Create document
         try:
             docmonarch = Document(template_path)
+
+            if job_number:
+                logger.info(f"Adding header with job number: {job_number}")
+                
+                for section_idx, section in enumerate(docmonarch.sections):
+                    logger.info(f"Processing section {section_idx + 1}")
+                    
+                    # Disable Word's different first page / odd/even page headers
+                    section.different_first_page_header_footer = False
+                    
+                    # Choose headers to update: main, first page, even page
+                    headers_to_update = [
+                        section.header,
+                        section.first_page_header,
+                        section.even_page_header
+                    ]
+                    
+                    for header_type, header in zip(['Default', 'First Page', 'Even Page'], headers_to_update):
+                        header_text_modified = False
+
+                        for para in header.paragraphs:
+                            if "MONARCH" in para.text and "PMC" in para.text:
+                                if re.search(r'\d+', para.text):
+                                    modified_text = re.sub(r'(\d+)', job_number, para.text)
+                                else:
+                                    modified_text = f"{para.text.strip()} AAI/AN_{job_number}"
+
+                                para.clear()
+                                run = para.add_run(modified_text)
+                                run.font.name = 'Arial'
+                                run.font.size = Pt(12)
+                                run.font.bold = False
+
+                                header_text_modified = True
+                                logger.info(f"Updated {header_type} header in section {section_idx + 1}")
+                                break
         except Exception as e:
             logger.error(f"Error creating document: {str(e)}")
             return jsonify({
@@ -1079,91 +833,60 @@ def generate_document():
 
         # Update user information
         try:
-            name_on_certificate = user_data["user"]["nameoncertificate"]
-            corresponding_Address = user_data["user"]["correspondanceadress"]
-            Survey_no = f"Survey No:" + user_data["user"]["gutnumber"]
-            site_adress = f"Village :{user_data['user']['village']} Taluka :{user_data['user']['taluka']} District :{user_data['user']['district']} Pincode :{user_data['user']['pincode']}"
-
+            name_on_certificate = user_data.get("user", {}).get("nameoncertificate", "")
+            corresponding_Address = user_data.get("user", {}).get("correspondanceadress", "")
+            gut_number = user_data.get("user", {}).get("gutnumber", "")
+            Survey_no = f"Survey No:{gut_number}"
+            
+            village = user_data.get("user", {}).get("village", "")
+            taluka = user_data.get("user", {}).get("taluka", "")
+            district = user_data.get("user", {}).get("district", "")
+            pincode = user_data.get("user", {}).get("pincode", "")
+            site_adress = f"Village: {village} Taluka: {taluka} District: {district} Pincode: {pincode}"
             # Update date in all headers - Get current date in the desired format (DD/MM/YYYY)
+            
             import datetime
-            from docx.enum.text import WD_ALIGN_PARAGRAPH  # Add this import
+            
+            
+
             current_date = datetime.datetime.now().strftime("%d/%m/%Y")
-            logger.info(f"Current Date: {current_date}")  # Log the date
-            
-            # Update the date in every section's header
-            date_updated = False
-            for section in docmonarch.sections:
-                header = section.header
-                
-                # First check paragraphs in the header
-                for paragraph in header.paragraphs:
-                    text = paragraph.text
-                    logger.info(f"Header Paragraph Text: '{text}'")  # Log the text content
-                    
-                    if "Date" in text:
-                        paragraph.clear()
-                        run = paragraph.add_run(f"Date - {current_date}")
+            logger.info(f"Current Date: {current_date}")
+
+            # Loop through all sections and update date in header
+            for section_idx, section in enumerate(docmonarch.sections):
+                section.different_first_page_header_footer = False  # ensure uniform headers
+                headers = {
+                    "Default": section.header,
+                    "First Page": section.first_page_header,
+                    "Even Page": section.even_page_header
+                }
+
+                for header_name, header in headers.items():
+                    date_found = False
+
+                    for para in header.paragraphs:
+                        if re.search(r"\b\d{2}/\d{2}/\d{4}\b", para.text):
+                            old_date = re.search(r"\b\d{2}/\d{2}/\d{4}\b", para.text).group()
+                            para.text = para.text.replace(old_date, current_date)
+                            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+                            run = para.runs[0] if para.runs else para.add_run()
+                            run.font.name = 'Arial'
+                            run.font.size = Pt(12)
+
+                            logger.info(f"Updated {header_name} header date in section {section_idx + 1}")
+                            date_found = True
+                            break
+
+                    if not date_found:
+                        logger.info(f"Adding date to {header_name} header in section {section_idx + 1}")
+                        new_para = header.add_paragraph(f"Date - {current_date}")
+                        new_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+                        run = new_para.runs[0]
                         run.font.name = 'Arial'
                         run.font.size = Pt(12)
-                        run.font.bold = True
-                        logger.info(f"Updated paragraph with date: {paragraph.text}")
-                        date_updated = True
-                
-                # Check for date in header tables
-                for table in header.tables:
-                    for row in table.rows:
-                        for cell in row.cells:
-                            for paragraph in cell.paragraphs:
-                                text = paragraph.text
-                                logger.info(f"Header Table Cell Text: '{text}'")
-                                
-                                if "Date" in text:
-                                    paragraph.clear()
-                                    run = paragraph.add_run(f"Date - {current_date}")
-                                    run.font.name = 'Arial'
-                                    run.font.size = Pt(12)
-                                    run.font.bold = True
-                                    logger.info(f"Updated table cell with date: {paragraph.text}")
-                                    date_updated = True
-            
-            # If no date field was found in headers, check the main document body
-            if not date_updated:
-                logger.info("No date field found in headers, checking document body")
-                for paragraph in docmonarch.paragraphs:
-                    if "Date" in paragraph.text:
-                        paragraph.clear()
-                        run = paragraph.add_run(f"Date - {current_date}")
-                        run.font.name = 'Arial'
-                        run.font.size = Pt(12)
-                        run.font.bold = True
-                        logger.info(f"Updated body paragraph with date: {paragraph.text}")
-                        date_updated = True
-                        break
-            
-            # If still no date field found, try to add it to the header
-            if not date_updated:
-                logger.info("No date field found, adding to first section header")
-                if docmonarch.sections:
-                    header = docmonarch.sections[0].header
-                    paragraph = header.add_paragraph(f"Date - {current_date}")
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-                    paragraph_format = paragraph.paragraph_format
-                    paragraph_format.right_indent = Inches(0.5)  # Right padding
-                    # paragraph_format.line_spacing = Pt(6)  # Adjust line spacing as needed
-                    # paragraph_format.space_after = Pt(10)  # Bottom margin
-                    section = docmonarch.sections[0]
-                    section.top_margin = Inches(0.5)  # Adjust the top margin of the section
-
-
-                    
-
-                    run = paragraph.runs[0]
-                    run.font.name = 'Arial'
-                    run.font.size = Pt(12)
-                    # run.font.bold = True
-                    logger.info(f"Added new date field to header: {paragraph.text}")
-
+                        
             # Update paragraphs
             if len(docmonarch.paragraphs) > 6:
                 paragraph = docmonarch.paragraphs[6]
@@ -1219,41 +942,44 @@ def generate_document():
             # Update table with coordinates data
             if docmonarch.tables:
                 if len(docmonarch.tables) > 1:
-                    # for table in docmonarch.tables[1:]:
-                    #     table._element.getparent().remove(table._element)
-                
-                    table = docmonarch.tables[0]
-                    table1 = docmonarch.tables[1]
-                    row_index = 3
+                    # Get references to both tables
+                    table = docmonarch.tables[0]  # First table (for entries starting with P/p)
+                    table1 = docmonarch.tables[1]  # Second table (for other entries)
+                    row_index = 3  # Row index where data starts
 
-                    # Remove existing data rows
+                    # Clear existing data rows from both tables
                     for _ in range(len(table.rows) - row_index):
                         table._element.remove(table.rows[row_index]._element)
 
                     for _ in range(len(table1.rows) - row_index):
                         table1._element.remove(table1.rows[row_index]._element)
 
-                    serial_number = 1
-                    for entry in coordinates_data:
-                        pattern = r"^\s*[Pp]"
-                        if re.match(pattern, entry['P_name']):
+                    # Initialize separate counters for each table
+                    serial_number_table = 1  # Counter for first table
+                    serial_number_table1 = 1  # Counter for second table (will start from 1)
 
+                    for entry in coordinates_data:
+                        # Check if point name starts with P/p
+                        if re.match(r"^\s*[Pp]", entry['P_name']):
+                            # Process for FIRST table
                             new_row = table.add_row()
                             prevent_row_split(new_row)
 
                             for i, cell in enumerate(new_row.cells):
+                                # Clear existing content
                                 for paragraph in cell.paragraphs:
                                     paragraph._element.getparent().remove(paragraph._element)
+                                
                                 # Add new paragraph with controlled formatting
                                 paragraph = cell.add_paragraph()
                                 paragraph_format = paragraph.paragraph_format
-                                paragraph_format.space_before = Pt(0)  # Remove space before
-                                paragraph_format.space_after = Pt(0)   # Remove space after
-                                paragraph_format.line_spacing = 1.0    # Single line spacing
+                                paragraph_format.space_before = Pt(0)
+                                paragraph_format.space_after = Pt(0)
+                                paragraph_format.line_spacing = 1.0
 
-                                
+                                # Add content based on column index
                                 if i == 0:
-                                    run = paragraph.add_run(str(serial_number))
+                                    run = paragraph.add_run(str(serial_number_table))
                                 elif i == 1:
                                     run = paragraph.add_run(f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode")
                                 elif i == 2:
@@ -1261,35 +987,60 @@ def generate_document():
                                 elif i == 3:
                                     run = paragraph.add_run(entry['longitude_dms'])
                                 elif i == 4:
-                                    run = paragraph.add_run(str(entry['Height']))
-                                elif i == 5 and 'distances_to_reference_points_km' in entry:
-                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM")
-                                elif i == 6 and 'distances_to_reference_points_km' in entry:
-                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['loh']:.2f} KM")
-                                elif i == 7 and 'boundary_distances' in entry:
-                                    run = paragraph.add_run(f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\nLohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM")
+                                    height_value = entry.get('Height', "N/A")
+                                    run = paragraph.add_run(str(height_value) if height_value is not None else "N/A")
+                                elif i == 5:
+                                    if 'distances_to_reference_points_km' in entry and entry['distances_to_reference_points_km'] and 'NDA' in entry['distances_to_reference_points_km']:
+                                        nda_distance = entry['distances_to_reference_points_km']['NDA']
+                                        run = paragraph.add_run(f"{nda_distance:.2f} KM" if nda_distance is not None else "N/A")
+                                    else:
+                                        run = paragraph.add_run("N/A")
+                                    
+                                elif i == 6:
+                                    if 'distances_to_reference_points_km' in entry and entry['distances_to_reference_points_km'] and 'loh' in entry['distances_to_reference_points_km']:
+                                        loh_distance = entry['distances_to_reference_points_km']['loh']
+                                        run = paragraph.add_run(f"{loh_distance:.2f} KM" if loh_distance is not None else "N/A")
+                                    else:
+                                        run = paragraph.add_run("N/A")
+                                    
+                                elif i == 7:
+                                    nda_boundary = "N/A"
+                                    lohgaon_boundary = "N/A"
+                                    
+                                    if 'boundary_distances' in entry and entry['boundary_distances']:
+                                        if 'NDAboundaryMinDistance' in entry['boundary_distances'] and entry['boundary_distances']['NDAboundaryMinDistance'] is not None:
+                                            nda_boundary = f"{entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM"
+                                            
+                                        if 'LohgaonBoundaryMinDistance' in entry['boundary_distances'] and entry['boundary_distances']['LohgaonBoundaryMinDistance'] is not None:
+                                            lohgaon_boundary = f"{entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
+                                    
+                                    run = paragraph.add_run(f"NDA Min Distance: {nda_boundary}\nLohgaon Min Distance: {lohgaon_boundary}")
                                 
-                                # Format the run
                                 run.font.name = "Arial"
                                 run.font.size = Pt(12)
 
+                            serial_number_table += 1  # Increment only first table's counter
+
                         else:
+                            # Process for SECOND table
                             new_row = table1.add_row()
                             prevent_row_split(new_row)
 
                             for i, cell in enumerate(new_row.cells):
+                                # Clear existing content
                                 for paragraph in cell.paragraphs:
                                     paragraph._element.getparent().remove(paragraph._element)
+                                
                                 # Add new paragraph with controlled formatting
                                 paragraph = cell.add_paragraph()
                                 paragraph_format = paragraph.paragraph_format
-                                paragraph_format.space_before = Pt(0)  # Remove space before
-                                paragraph_format.space_after = Pt(0)   # Remove space after
-                                paragraph_format.line_spacing = 1.0    # Single line spacing
+                                paragraph_format.space_before = Pt(0)
+                                paragraph_format.space_after = Pt(0)
+                                paragraph_format.line_spacing = 1.0
 
-                                
+                                # Add content based on column index
                                 if i == 0:
-                                    run = paragraph.add_run(str(serial_number))
+                                    run = paragraph.add_run(str(serial_number_table1))  # Starts from 1
                                 elif i == 1:
                                     run = paragraph.add_run(f"Point No. {entry['P_name']} :- Differential GPS Observation taken on Ground IN STATIC mode")
                                 elif i == 2:
@@ -1297,54 +1048,201 @@ def generate_document():
                                 elif i == 3:
                                     run = paragraph.add_run(entry['longitude_dms'])
                                 elif i == 4:
-                                    run = paragraph.add_run(str(entry['Height']))
-                                elif i == 5 and 'distances_to_reference_points_km' in entry:
-                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['NDA']:.2f} KM")
-                                elif i == 6 and 'distances_to_reference_points_km' in entry:
-                                    run = paragraph.add_run(f"{entry['distances_to_reference_points_km']['loh']:.2f} KM")
-                                elif i == 7 and 'boundary_distances' in entry:
-                                    run = paragraph.add_run(f"NDA Min Distance: {entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM\nLohgaon Min Distance: {entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM")
-                                
-                                # Format the run
+                                    height_value = entry.get('Height', "N/A")
+                                    run = paragraph.add_run(str(height_value) if height_value is not None else "N/A")
+                                elif i == 5:
+                                    if 'distances_to_reference_points_km' in entry and entry['distances_to_reference_points_km'] and 'NDA' in entry['distances_to_reference_points_km']:
+                                        nda_distance = entry['distances_to_reference_points_km']['NDA']
+                                        run = paragraph.add_run(f"{nda_distance:.2f} KM" if nda_distance is not None else "N/A")
+                                    else:
+                                        run = paragraph.add_run("N/A")
+                                    
+                                elif i == 6:
+                                    if 'distances_to_reference_points_km' in entry and entry['distances_to_reference_points_km'] and 'loh' in entry['distances_to_reference_points_km']:
+                                        loh_distance = entry['distances_to_reference_points_km']['loh']
+                                        run = paragraph.add_run(f"{loh_distance:.2f} KM" if loh_distance is not None else "N/A")
+                                    else:
+                                        run = paragraph.add_run("N/A")
+                                    
+                                elif i == 7:
+                                    nda_boundary = "N/A"
+                                    lohgaon_boundary = "N/A"
+                                    
+                                    if 'boundary_distances' in entry and entry['boundary_distances']:
+                                        if 'NDAboundaryMinDistance' in entry['boundary_distances'] and entry['boundary_distances']['NDAboundaryMinDistance'] is not None:
+                                            nda_boundary = f"{entry['boundary_distances']['NDAboundaryMinDistance']:.2f} KM"
+                                            
+                                        if 'LohgaonBoundaryMinDistance' in entry['boundary_distances'] and entry['boundary_distances']['LohgaonBoundaryMinDistance'] is not None:
+                                            lohgaon_boundary = f"{entry['boundary_distances']['LohgaonBoundaryMinDistance']:.2f} KM"
+                                    
+                                    run = paragraph.add_run(f"NDA Min Distance: {nda_boundary}\nLohgaon Min Distance: {lohgaon_boundary}")
+
+                                # Formatting
                                 run.font.name = "Arial"
                                 run.font.size = Pt(12)
-                        
-                        # Set the font and formatting for each cell
-                        for cell in new_row.cells:
-                            set_cell_alignment(cell, vertical="center", horizontal="center")  # Center both vertically and horizontally
 
-                        serial_number += 1
+                            serial_number_table1 += 1  # Increment only second table's counter
 
+                        # Apply cell alignment for all new rows
+                        for i, cell in enumerate(new_row.cells):
+                            set_cell_alignment(cell, 
+                                            vertical="center",
+                                            horizontal="center",
+                                            is_second_column=(i == 1))
+                    # Final table formatting
                     set_table_borders(table)
                     set_table_borders(table1)
                     adjust_table_cell_alignments(table)
                     adjust_table_cell_alignments(table1)
-                
 
+                    paragraph = docmonarch.add_paragraph()
+                    run = paragraph.add_run()
+                    run.add_break(WD_BREAK.PAGE)
+                    
+                    paragraph_after_table1 = docmonarch.add_paragraph()
+                    p1 = paragraph_after_table1._element
+                    br1 = OxmlElement('w:br')
+                    br1.set(qn('w:type'), 'page')
+                    p1.append(br1)
+                    table._element.addnext(p1)  # Insert after first table
+
+                    # ====== 2. Page Break After Second Table (table1) ======
+                    paragraph_after_table2 = docmonarch.add_paragraph()
+                    p2 = paragraph_after_table2._element
+                    br2 = OxmlElement('w:br')
+                    br2.set(qn('w:type'), 'page')
+                    p2.append(br2)
+                    table1._element.addnext(p2)
+
+
+                    def add_maps_to_document(document, maps_folder="D:\\Monarch_Mod\\backend\\static"):
+                        
+                        # Get the map files
+                        map_files = [
+                            os.path.join(maps_folder, "Map1.png"),
+                            os.path.join(maps_folder, "Map2.png"),
+                            os.path.join(maps_folder, "Map3.png"),
+                            os.path.join(maps_folder, "Map4.png")
+                        ]
+                        
+                        # Add each map with proper sizing
+                        for i, map_file in enumerate(map_files, 1):
+                            if os.path.exists(map_file):
+                                # Add page break before each map (except the first one)
+                                if i > 1:
+                                    page_break = document.add_paragraph()
+                                    run = page_break.add_run()
+                                    run.add_break(WD_BREAK.PAGE)
+                                
+                                # Add top margin space
+                                for _ in range(3):  
+                                    spacing_para = document.add_paragraph()
+                                    spacing_para.paragraph_format.space_after = Pt(12)
+                                
+                                
+                                try:
+                                    document.add_picture(map_file, width=Inches(6))  # Adjust width as needed
+                                    last_paragraph = document.paragraphs[-1]
+                                    last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error adding map {i}: {str(e)}")
+                                    # Add error message in the document
+                                    error_para = document.add_paragraph(f"Error loading Map {i}: {str(e)}")
+                                    error_para.runs[0].font.color.rgb = RGBColor(255, 0, 0)  # Red color for error
+                            else:
+                                logger.warning(f"Map file not found: {map_file}")
+                                warning_para = document.add_paragraph(f"Map {i} file not found at: {map_file}")
+                                warning_para.runs[0].font.color.rgb = RGBColor(255, 165, 0)  # Orange color for warning
+
+                    
+            
+            output_dir = "generated_docs"
+
+            # Create directory if it doesn't exist
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
             # Save document
             output_docx = 'modified_output.docx'
             output_pdf = 'modified_output.pdf'
-            docmonarch.save(output_docx)     
+
+            # Create unique filenames based on outward number
+            outward_docx = os.path.join(output_dir, f'{outward_number}.docx')
+            outward_pdf = os.path.join(output_dir, f'{outward_number}.pdf')
             
+            docmonarch.save(output_docx)  
+
+            import shutil
+            shutil.copy(output_docx, outward_docx)   
             
             docmonarch = None  # Release the document
-            
-            # Convert to PDF using platform-specific method
-            if convert_to_pdf(output_docx, output_pdf):
-                if not os.path.exists(output_pdf):
-                    raise Exception("PDF file was not created")
 
-                return jsonify({
-                    "success": True,
-                    "message": "Document generated successfully",
-                    "docPath": os.path.abspath(output_docx),
-                    "pdfPath": os.path.abspath(output_pdf)
-                })
-            else:
-                return jsonify({
-                    "success": False,
-                    "error": "Failed to convert document to PDF"
-                }), 500
+            system = platform.system()
+            
+            if system == "Windows":
+                # Windows: Use docx2pdf
+                import pythoncom
+                from docx2pdf import convert
+                
+                pythoncom.CoInitialize()  # Initialize COM for Windows
+                convert(output_docx, output_pdf)
+                convert(outward_docx, outward_pdf)
+                pythoncom.CoUninitialize()  # Clean up COM
+            
+            else:  # Linux/macOS
+                # Find the correct LibreOffice binary
+                libreoffice_commands = ["libreoffice", "soffice"]
+                command = next((cmd for cmd in libreoffice_commands if subprocess.run([cmd, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False).returncode == 0), None)
+                
+                if not command:
+                    logger.error("Neither LibreOffice nor soffice found. Please install LibreOffice.")
+                    return jsonify({
+                        "success": False,
+                        "error": "LibreOffice not found. Please install LibreOffice."
+                    }), 500
+
+                # Convert standard output
+                process_standard = subprocess.run(
+                    [command, "--headless", "--convert-to", "pdf", "--outdir", os.path.dirname(output_pdf), output_docx],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+
+                if process_standard.returncode != 0:
+                    logger.error(f"Error converting standard output with LibreOffice: {process_standard.stderr.decode()}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"Standard PDF conversion failed: {process_standard.stderr.decode()}"
+                    }), 500
+                
+                # Convert outward-specific file
+                process_outward = subprocess.run(
+                    [command, "--headless", "--convert-to", "pdf", "--outdir", os.path.dirname(outward_pdf), outward_docx],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+
+                if process_outward.returncode != 0:
+                    logger.error(f"Error converting outward-specific output with LibreOffice: {process_outward.stderr.decode()}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"Outward-specific PDF conversion failed: {process_outward.stderr.decode()}"
+                    }), 500
+
+            # Check if PDFs were created
+            if not os.path.exists(output_pdf) or not os.path.exists(outward_pdf):
+                raise Exception("One or more PDF files were not created")
+
+            return jsonify({
+                "success": True,
+                "message": "Document generated successfully",
+                "docPath": os.path.abspath(output_docx),
+                "pdfPath": os.path.abspath(output_pdf),
+                "outwardDocPath": os.path.abspath(outward_docx),
+                "outwardPdfPath": os.path.abspath(outward_pdf)
+            })
 
         except Exception as e:
             logger.error(f"Error during document generation: {str(e)}")
@@ -1359,7 +1257,6 @@ def generate_document():
             "success": False,
             "error": f"Unexpected error: {str(e)}"
         }), 500
-
 
 
 
@@ -1407,14 +1304,130 @@ def download_pdf(outward_number):
             "error": str(e)
         }), 500
 
+#---------------------------Api for a pdf file preview--------------------
+@app.route('/api/pdf/<filename>')
+def serve_pdf(filename):
+
+    pdf_path = os.path.join('D:/Monarch_Mod/backend/generated_docs', f'{filename}.pdf')
+    
+    if os.path.exists(pdf_path):
+        return send_file(pdf_path, mimetype='application/pdf')
+    else:
+        return jsonify({"error": "PDF not found"}), 404
+
+
+
+@app.route('/Modpdf-download/<application_number>', methods=['GET'])
+def downloadpdf(application_number):
+    try:
+        pdf_filename = f"{application_number}.pdf"
+        pdf_path = os.path.join('D:/Monarch_Mod/backend/generated_docs', pdf_filename)
+
+        if os.path.exists(pdf_path):
+            return send_file(
+                pdf_path,
+                as_attachment=True,
+                download_name=f"MOD_{application_number}.pdf",  # Correct naming
+                mimetype='application/pdf'
+            )
+        else:
+            return jsonify({"error": "PDF not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+@app.route('/run-bat', methods=['GET'])
+def run_bat_file():
+    try:
+        subprocess.Popen([r"D:\Monarch_Mod\backend\run_converter.bat"], shell=True)
+        return jsonify({"success": True, "message": "BAT file started"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
         app.run(debug=True, host='0.0.0.0', port=5000)
+    
 
 
 
 
 
+
+
+# paragraph = docmonarch.add_paragraph()
+                    
+                    # # 2. Get the XML element of the paragraph
+                    # p = paragraph._element
+                    
+                    # # 3. Create a page break element
+                    # br = OxmlElement('w:br')
+                    # br.set(qn('w:type'), 'page')  # Set break type to PAGE
+                    
+                    # # 4. Add the break to the paragraph
+                    # p.append(br)
+                    
+                    # # 5. Insert this paragraph AFTER the first table
+                    # table._element.addnext(p)
+                    # # ====== END PAGE BREAK ======
+
+
+
+
+
+
+#  if map_screenshots:
+#                 # Add a page break
+#                 docmonarch.add_paragraph().add_run()         #----.add_break(WD_BREAK.PAGE)
+                
+#                 # Add a title for the maps section
+#                 # maps_title = docmonarch.add_paragraph("Site Location Maps")
+#                 # maps_title.style = docmonarch.styles['Heading 1']
+                
+#                 # Process and add map screenshots
+#                 for map_name, screenshot_data in map_screenshots.items():
+#                     if screenshot_data and screenshot_data.startswith('data:image'):
+#                         # Extract the base64 data
+#                         img_data = screenshot_data.split(',')[1]
+                        
+#                         # Create temporary file for the image
+#                         img_filename = f"temp_{map_name}.png"
+                        
+#                         # Save base64 data as image
+#                         with open(img_filename, "wb") as img_file:
+#                             img_file.write(base64.b64decode(img_data))
+                        
+#                         # # Add a title for each map
+#                         # map_title = ""
+#                         # if map_name == "map1":
+#                         #     map_title = "NDA Map View"
+#                         # elif map_name == "map2":
+#                         #     map_title = "Lohagaon Map View"
+#                         # elif map_name == "map3":
+#                         #     map_title = "Toposheet Map View"
+                        
+#                         # Add the map title
+#                         # map_para = docmonarch.add_paragraph(map_title)
+#                         # map_para.style = docmonarch.styles['Heading 2']
+
+#                         spacing_paragraph = docmonarch.add_paragraph()
+#                         spacing_paragraph.add_run("\n")  # Adding a new line for extra spacing
+
+                        
+#                         # Add the map image
+#                         paragraph = docmonarch.add_paragraph()
+#                         run = paragraph.add_run()
+#                         run.add_picture(img_filename, width=Inches(6))
+                        
+#                         paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+
+#                         paragraph.paragraph_format.space_before = Pt(10)
+#                         # Remove temporary file
+#                         os.remove(img_filename)
+                        
+#                         # Add some space after the image
+#                         docmonarch.add_paragraph()
 
 
 
